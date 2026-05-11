@@ -1,0 +1,26 @@
+file,status,confidence,indicators
+1_patching_clr.ps1,AMSI BYPASS,80,MemoryPatch, MemoryPatch, MemoryPatch
+2_script_block_smuggling.ps1,AMSI BYPASS,60,ScriptBlockSmuggling, ScriptBlockSmuggling
+3_reflection_scancontent_change.ps1,AMSI BYPASS,40,ReflectionBypass
+4_hardware_breakpoints.ps1,AMSI BYPASS,80,HardwareBreakpoint, HardwareBreakpoint
+5_clr_hooking.ps1,AMSI BYPASS,80,MemoryPatch, MemoryPatch, ReflectionBypass
+6_patch_providers_msOav.ps1,AMSI BYPASS,60,ReflectionBypass, MemoryPatch
+7_reflection.ps1,AMSI BYPASS,60,ReflectionBypass, MemoryPatch
+8_scanning_interception.ps1,AMSI BYPASS,60,MemoryPatch, MemoryPatch
+9_rasta_mouse.ps1,AMSI BYPASS,80,AmsiDll, MemoryPatch, MemoryPatch
+10_amsi_open_session.ps1,AMSI BYPASS,100,AmsiDll, ApiCall, MemoryPatch, MemoryPatch...
+11_amsi_scan_buffer.ps1,AMSI BYPASS,80,AmsiDll, MemoryPatch, MemoryPatch
+12_forcing_error.ps1,AMSI BYPASS,100,ReflectionBypass, ReflectionBypass, ReflectionBypass
+13_disable_script_logging.ps1,AMSI BYPASS,80,LoggingBypass, LoggingBypass, LoggingBypass
+14_amsi_buffer_path.ps1,AMSI BYPASS,60,MemoryPatch, AmsiDll
+15_matt_graebers.ps1,AMSI BYPASS,80,ReflectionBypass, ReflectionBypass
+16_matt_graebers_autologging_bypass.ps1,AMSI BYPASS,80,ReflectionBypass, ReflectionBypass
+17_matt_graevers_second_reflection.ps1,AMSI BYPASS,80,ReflectionBypass, ReflectionBypass
+18_cornelis_dll_hijack.ps1,AMSI BYPASS,60,AmsiDll, AmsiDllHijack
+19_powershell_2.ps1,AMSI BYPASS,40,PSv2Downgrade
+20_nishang.ps1,AMSI BYPASS,100,ReflectionBypass, ReflectionBypass, ReflectionBypass, AmsiDll...
+21_adam_chester.ps1,AMSI BYPASS,60,MemoryPatch, MemoryPatch
+22_modified_amsi_scan_buffer.ps1,AMSI BYPASS,80,AmsiDll, MemoryPatch, MemoryPatch
+23_patching_amsi_scan_buffer_address.ps1,AMSI BYPASS,60,AmsiDll, MemoryPatch
+24_modern_av.ps1,AMSI BYPASS,80,ReflectionBypass, ReflectionBypass
+45_modern_av.ps1,AMSI BYPASS,80,ReflectionBypass, ReflectionBypass
