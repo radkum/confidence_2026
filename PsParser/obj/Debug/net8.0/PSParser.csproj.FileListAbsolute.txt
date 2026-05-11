@@ -1,0 +1,16 @@
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.GeneratedMSBuildEditorConfig.editorconfig
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.AssemblyInfoInputs.cache
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.AssemblyInfo.cs
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.csproj.CoreCompileInputs.cache
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.deps.json
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.dll
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.pdb
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.xml
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.dll
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\refint\PSParser.dll
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.xml
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.pdb
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\ref\PSParser.dll
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.exe
+C:\VSExclude\confidence\PsParser\bin\Debug\net8.0\PSParser.runtimeconfig.json
+C:\VSExclude\confidence\PsParser\obj\Debug\net8.0\PSParser.genruntimeconfig.cache

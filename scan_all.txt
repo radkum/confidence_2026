@@ -1,0 +1,595 @@
+Scanning 383 file(s) in: C:\VSExclude\confidence\samples
+
+File                                               Status                Conf  Indicators
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+LoadAuthenticators.ps1                             Clean                    0  —
+AzError.ps1                                        Clean                    0  —
+InitializeAssemblyResolver.ps1                     Clean                    0  —
+InitializePSStyle.ps1                              Clean                    0  —
+New-AzGalleryApplication.ps1                       Clean                    0  —
+New-AzGalleryApplicationVersion.ps1                Clean                    0  —
+Set-AzVMRunCommand_ScriptLocalPath.ps1             Clean                    0  —
+Set-AzVmssVMRunCommand_ScriptLocalPath.ps1         Clean                    0  —
+Update-AzGalleryApplicationVersion.ps1             Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+InitializeAssemblyLoadContext.ps1                  Clean                    0  —
+New-AzGalleryApplication.ps1                       Clean                    0  —
+New-AzGalleryApplicationVersion.ps1                Clean                    0  —
+Set-AzVMRunCommand_ScriptLocalPath.ps1             Clean                    0  —
+Set-AzVmssVMRunCommand_ScriptLocalPath.ps1         Clean                    0  —
+Update-AzGalleryApplicationVersion.ps1             Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+InitializeAssemblyLoadContext.ps1                  Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzActionGroupArmRoleReceiverObject.ps1         Clean                    0  —
+New-AzActionGroupAutomationRunbookReceiverObject.ps1 Clean                    0  —
+New-AzActionGroupAzureAppPushReceiverObject.ps1    Clean                    0  —
+New-AzActionGroupAzureFunctionReceiverObject.ps1   Clean                    0  —
+New-AzActionGroupEmailReceiverObject.ps1           Clean                    0  —
+New-AzActionGroupEventHubReceiverObject.ps1        Clean                    0  —
+New-AzActionGroupItsmReceiverObject.ps1            Clean                    0  —
+New-AzActionGroupLogicAppReceiverObject.ps1        Clean                    0  —
+New-AzActionGroupSmsReceiverObject.ps1             Clean                    0  —
+New-AzActionGroupVoiceReceiverObject.ps1           Clean                    0  —
+New-AzActionGroupWebhookReceiverObject.ps1         Clean                    0  —
+Test-AzActionGroup.ps1                             Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzActivityLogAlertActionGroupObject.ps1        Clean                    0  —
+New-AzActivityLogAlertAlertRuleAnyOfOrLeafConditionObject.ps1 Clean                    0  —
+New-AzActivityLogAlertAlertRuleLeafConditionObject.ps1 Clean                    0  —
+New-AzActivityLogAlert.ps1                         Clean                    0  —
+Update-AzActivityLogAlert.ps1                      Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzAutoscaleWebhookNotificationObject.ps1       Clean                    0  —
+New-AzAutoscaleNotificationObject.ps1              Clean                    0  —
+New-AzAutoscaleProfileObject.ps1                   Clean                    0  —
+New-AzAutoscaleScaleRuleMetricDimensionObject.ps1  Clean                    0  —
+New-AzAutoscaleScaleRuleObject.ps1                 Clean                    0  —
+Update-AzAutoscaleSetting.ps1                      Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzDataFlowObject.ps1                           Clean                    0  —
+New-AzEventHubDestinationObject.ps1                Clean                    0  —
+New-AzEventHubDirectDestinationObject.ps1          Clean                    0  —
+New-AzIisLogsDataSourceObject.ps1                  Clean                    0  —
+New-AzLogAnalyticsDestinationObject.ps1            Clean                    0  —
+New-AzLogFilesDataSourceObject.ps1                 Clean                    0  —
+New-AzMonitoringAccountDestinationObject.ps1       Clean                    0  —
+New-AzPerfCounterDataSourceObject.ps1              Clean                    0  —
+New-AzPlatformTelemetryDataSourceObject.ps1        Clean                    0  —
+New-AzStorageBlobDestinationObject.ps1             Clean                    0  —
+New-AzStorageTableDestinationObject.ps1            Clean                    0  —
+New-AzSyslogDataSourceObject.ps1                   Clean                    0  —
+New-AzWindowsEventLogDataSourceObject.ps1          Clean                    0  —
+New-AzWindowsFirewallLogsDataSourceObject.ps1      Clean                    0  —
+New-AzExtensionDataSourceObject.ps1                Clean                    0  —
+New-AzPrometheusForwarderDataSourceObject.ps1      Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzDiagnosticSettingLogSettingsObject.ps1       Clean                    0  —
+New-AzDiagnosticSettingMetricSettingsObject.ps1    Clean                    0  —
+New-AzDiagnosticSettingSubscriptionLogSettingsObject.ps1 Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+New-AzScheduledQueryRuleConditionObject.ps1        Clean                    0  —
+New-AzScheduledQueryRuleDimensionObject.ps1        Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+Update-AzNetworkSecurityPerimeterAccessRule.ps1    Clean                    0  —
+Update-AzNetworkSecurityPerimeterAssociation.ps1   Clean                    0  —
+Update-AzNetworkSecurityPerimeterLink.ps1          Clean                    0  —
+Update-AzNetworkSecurityPerimeterLoggingConfiguration.ps1 Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+Add-AzADAppPermission.ps1                          Clean                    0  —
+Add-AzADGroupMember.ps1                            Clean                    0  —
+Get-AzADAppCredential.ps1                          Clean                    0  —
+Get-AzADAppFederatedIdentityCredential.ps1         Clean                    0  —
+Get-AzADApplication.ps1                            Clean                    0  —
+Get-AzADAppPermission.ps1                          Clean                    0  —
+Get-AzADGroup.ps1                                  Clean                    0  —
+Get-AzADGroupMember.ps1                            Clean                    0  —
+Get-AzADServicePrincipal.ps1                       Clean                    0  —
+Get-AzADSpCredential.ps1                           Clean                    0  —
+Get-AzADUser.ps1                                   Clean                    0  —
+New-AzADAppCredential.ps1                          Clean                    0  —
+New-AzADAppFederatedIdentityCredential.ps1         Clean                    0  —
+New-AzADApplication.ps1                            Clean                    0  —
+New-AzADGroup.ps1                                  Clean                    0  —
+New-AzADGroupOwner.ps1                             Clean                    0  —
+New-AzADServicePrincipal.ps1                       Clean                    0  —
+New-AzADServicePrincipalAppRoleAssignment.ps1      Clean                    0  —
+New-AzADSpCredential.ps1                           Clean                    0  —
+New-AzADUser.ps1                                   Clean                    0  —
+Remove-AzADAppCredential.ps1                       Clean                    0  —
+Remove-AzADApplication.ps1                         Clean                    0  —
+Remove-AzADAppPermission.ps1                       Clean                    0  —
+Remove-AzADGroup.ps1                               Clean                    0  —
+Remove-AzADGroupMember.ps1                         Clean                    0  —
+Remove-AzADServicePrincipal.ps1                    Clean                    0  —
+Remove-AzADSpCredential.ps1                        Clean                    0  —
+Remove-AzADUser.ps1                                Clean                    0  —
+Update-AzADApplication.ps1                         Clean                    0  —
+Update-AzADServicePrincipal.ps1                    Clean                    0  —
+Update-AzADUser.ps1                                Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+Get-AzPolicyAssignment.ps1                         Clean                    0  —
+Get-AzPolicyDefinition.ps1                         Clean                    0  —
+Get-AzPolicyExemption.ps1                          Clean                    0  —
+Get-AzPolicySetDefinition.ps1                      Clean                    0  —
+Helpers.ps1                                        Suspicious              20  ScriptBlockSmuggling(1)
+New-AzPolicyAssignment.ps1                         Clean                    0  —
+New-AzPolicyDefinition.ps1                         Clean                    0  —
+New-AzPolicyExemption.ps1                          Clean                    0  —
+New-AzPolicySetDefinition.ps1                      Clean                    0  —
+Remove-AzPolicyAssignment.ps1                      Clean                    0  —
+Remove-AzPolicyDefinition.ps1                      Clean                    0  —
+Remove-AzPolicyExemption.ps1                       Clean                    0  —
+Remove-AzPolicySetDefinition.ps1                   Clean                    0  —
+Update-AzPolicyAssignment.ps1                      Clean                    0  —
+Update-AzPolicyDefinition.ps1                      Clean                    0  —
+Update-AzPolicyExemption.ps1                       Clean                    0  —
+Update-AzPolicySetDefinition.ps1                   Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+ProxyCmdletDefinitions.ps1                         Clean                    0  —
+Get-SubscriptionIdTestSafe.ps1                     Clean                    0  —
+Unprotect-SecureString.ps1                         Clean                    0  —
+AzureAppGWClone.ps1                                Clean                    0  —
+AzurePublicLBUpgrade.ps1                           Clean                    0  —
+blah.ps1                                           Clean                    0  —
+CallOktaAPI.ps1                                    Clean                    0  —
+Check-AutopilotPrerequisites.ps1                   Clean                    0  —
+ConvertFrom-SourceTable.ps1                        Clean                    0  —
+DeliveryOptimizationTroubleshooter.ps1             Clean                    0  —
+Get-ApplockerWinEvent.ps1                          Clean                    0  —
+Get-AutopilotDiagnostics.ps1                       Clean                    0  —
+Get-AutopilotDiagnosticsCommunity.ps1              Clean                    0  —
+Get-HardwareDeviceInfo.ps1                         Clean                    0  —
+Get-IntuneManagementExtensionDiagnostics.ps1       Clean                    0  —
+Get-IntuneOffboardingTool.ps1                      Clean                    0  —
+Get-Sid.ps1                                        Clean                    0  —
+Get-UEFICertificate.ps1                            Clean                    0  —
+Get-WindowsAutopilotImportGUI.ps1                  Clean                    0  —
+Get-WindowsAutopilotInfo.ps1                       Clean                    0  —
+get-windowsautopilotinfocommunity.ps1              Clean                    0  —
+Initialize-Winget.ps1                              Clean                    0  —
+Install-Microsoft365.ps1                           Clean                    0  —
+Install-Office365Suite.ps1                         Clean                    0  —
+Install-OpenSSL.ps1                                Clean                    0  —
+Install-OSUpdates.ps1                              Clean                    0  —
+Install-RequiredModule.ps1                         Clean                    0  —
+Install-VMInsights.ps1                             Clean                    0  —
+Install-WindowsTerminal.ps1                        Clean                    0  —
+Invoke-M365LicenseReport.ps1                       Clean                    0  —
+Invoke-QuickAssist.ps1                             Clean                    0  —
+IP-Calc.ps1                                        Clean                    0  —
+Join.ps1                                           Clean                    0  —
+Log-Manager.ps1                                    Clean                    0  —
+Office-Update.ps1                                  Clean                    0  —
+PS7Bootstrap.ps1                                   Clean                    0  —
+Refresh-EnvironmentVariables.ps1                   Clean                    0  —
+Request-Certificate.ps1                            Clean                    0  —
+Set-InetpubFolderAcl.ps1                           Clean                    0  —
+Show-Tree.ps1                                      Clean                    0  —
+SignatureDownloadCustomTask.ps1                    Clean                    0  —
+SplitDbxContent.ps1                                Clean                    0  —
+Start-SplashScreen.ps1                             Clean                    0  —
+ThinkBiosConfigUI.ps1                              Clean                    0  —
+UninstallOneDrive.ps1                              Clean                    0  —
+UninstallTeams.ps1                                 Clean                    0  —
+Update-InboxApp.ps1                                Clean                    0  —
+UpdateGoogleChrome.ps1                             Clean                    0  —
+Upload-AzMonitorLog.ps1                            Clean                    0  —
+Upload-WindowsAutopilotDeviceInfo.ps1              Clean                    0  —
+VmDeleteHistory.ps1                                Clean                    0  —
+winfetch.ps1                                       Clean                    0  —
+winget-install.ps1                                 Clean                    0  —
+Add-ConstrainedDelegationBackdoor.ps1              Clean                    0  —
+Set-DCShadowPermissions.ps1                        Clean                    0  —
+Add-ConstrainedDelegationBackdoor.ps1              Clean                    0  —
+Add-RegBackdoor.ps1                                Clean                    0  —
+Add-ScrnSaveBackdoor.ps1                           Clean                    0  —
+DNS_TXT_Pwnage.ps1                                 AMSI BYPASS             40  PSv2Downgrade(1)
+Execute-OnTime.ps1                                 AMSI BYPASS             40  PSv2Downgrade(1)
+Gupt-Backdoor.ps1                                  AMSI BYPASS             40  PSv2Downgrade(1)
+HTTP-Backdoor.ps1                                  AMSI BYPASS             40  PSv2Downgrade(1)
+Invoke-ADSBackdoor.ps1                             Clean                    0  —
+Set-RemotePSRemoting.ps1                           Clean                    0  —
+Set-RemoteWMI.ps1                                  Clean                    0  —
+Invoke-AmsiBypass.ps1                              AMSI BYPASS            100  ReflectionBypass(3), AmsiDll(1), AmsiDllHijack(1), PSv2Downgrade(1)
+Out-CHM.ps1                                        Clean                    0  —
+Out-Excel.ps1                                      Clean                    0  —
+Out-HTA.ps1                                        Clean                    0  —
+Out-Java.ps1                                       Clean                    0  —
+Out-JS.ps1                                         Clean                    0  —
+Out-SCF.ps1                                        Clean                    0  —
+Out-SCT.ps1                                        Clean                    0  —
+Out-Shortcut.ps1                                   Clean                    0  —
+Out-WebQuery.ps1                                   Clean                    0  —
+Out-Word.ps1                                       Clean                    0  —
+Enable-DuplicateToken.ps1                          Clean                    0  —
+Invoke-PsUACme.ps1                                 Clean                    0  —
+Remove-Update.ps1                                  Clean                    0  —
+Download_Execute.ps1                               Clean                    0  —
+Download-Execute-PS.ps1                            Clean                    0  —
+Execute-Command-MSSQL.ps1                          Clean                    0  —
+Execute-DNSTXT-Code.ps1                            Suspicious              20  MemoryPatch(1)
+Out-RundllCommand.ps1                              Clean                    0  —
+Check-VM.ps1                                       Clean                    0  —
+Copy-VSS.ps1                                       Clean                    0  —
+FireBuster.ps1                                     Clean                    0  —
+FireListener.ps1                                   Clean                    0  —
+Get-Information.ps1                                Clean                    0  —
+Get-LSASecret.ps1                                  Clean                    0  —
+Get-PassHashes.ps1                                 Clean                    0  —
+Get-PassHints.ps1                                  Clean                    0  —
+Get-WebCredentials.ps1                             Clean                    0  —
+Get-WLAN-Keys.ps1                                  Clean                    0  —
+Invoke-CredentialsPhish.ps1                        Clean                    0  —
+Invoke-Mimikatz.ps1                                Suspicious              60  MemoryPatch(3)
+Invoke-MimikatzWDigestDowngrade.ps1                Suspicious              60  MemoryPatch(3)
+Invoke-Mimikittenz.ps1                             Clean                    0  —
+Invoke-SessionGopher.ps1                           Clean                    0  —
+Invoke-SSIDExfil.ps1                               AMSI BYPASS             40  PSv2Downgrade(1)
+Keylogger.ps1                                      AMSI BYPASS             40  PSv2Downgrade(1)
+Show-TargetScreen.ps1                              Clean                    0  —
+Speak.ps1                                          Clean                    0  —
+Invoke-Interceptor.ps1                             Clean                    0  —
+Create-MultipleSessions.ps1                        Clean                    0  —
+Invoke-NetworkRelay.ps1                            Clean                    0  —
+Run-EXEonRemote.ps1                                Clean                    0  —
+Invoke-Prasadhak.ps1                               Clean                    0  —
+Invoke-BruteForce.ps1                              Clean                    0  —
+Invoke-PortScan.ps1                                Clean                    0  —
+Invoke-ConPtyShell.ps1                             Clean                    0  —
+Invoke-JSRatRegsvr.ps1                             Clean                    0  —
+Invoke-JSRatRundll.ps1                             Clean                    0  —
+Invoke-PoshRatHttp.ps1                             Clean                    0  —
+Invoke-PoshRatHttps.ps1                            Clean                    0  —
+Invoke-PowerShellIcmp.ps1                          Clean                    0  —
+Invoke-PowerShellTcp.ps1                           Clean                    0  —
+Invoke-PowerShellTcpOneLine.ps1                    Clean                    0  —
+Invoke-PowerShellTcpOneLineBind.ps1                Clean                    0  —
+Invoke-PowerShellUdp.ps1                           Clean                    0  —
+Invoke-PowerShellUdpOneLine.ps1                    Clean                    0  —
+Invoke-PowerShellWmi.ps1                           Clean                    0  —
+Invoke-PsGcat.ps1                                  AMSI BYPASS             40  PSv2Downgrade(1)
+Invoke-PsGcatAgent.ps1                             AMSI BYPASS             40  PSv2Downgrade(1)
+Remove-PoshRat.ps1                                 Clean                    0  —
+Add-Exfiltration.ps1                               AMSI BYPASS             40  PSv2Downgrade(1)
+Add-Persistence.ps1                                Clean                    0  —
+Base64ToString.ps1                                 Clean                    0  —
+ConvertTo-ROT13.ps1                                AMSI BYPASS             40  PSv2Downgrade(1)
+Do-Exfiltration.ps1                                AMSI BYPASS             40  PSv2Downgrade(1)
+Download.ps1                                       Clean                    0  —
+ExetoText.ps1                                      Clean                    0  —
+Invoke-Decode.ps1                                  Clean                    0  —
+Invoke-Encode.ps1                                  Clean                    0  —
+Out-DnsTxt.ps1                                     Clean                    0  —
+Parse_Keys.ps1                                     Clean                    0  —
+Remove-Persistence.ps1                             Clean                    0  —
+Start-CaptureServer.ps1                            Clean                    0  —
+StringToBase64.ps1                                 Clean                    0  —
+TexttoExe.ps1                                      Clean                    0  —
+Find-AVSignature.ps1                               Clean                    0  —
+Invoke-DllInjection.ps1                            Suspicious              40  MemoryPatch(2)
+Invoke-ReflectivePEInjection.ps1                   Suspicious              60  MemoryPatch(3)
+Invoke-Shellcode.ps1                               Suspicious              40  MemoryPatch(2)
+Invoke-WmiCommand.ps1                              Clean                    0  —
+Get-GPPAutologon.ps1                               Clean                    0  —
+Get-GPPPassword.ps1                                Clean                    0  —
+Get-Keystrokes.ps1                                 Clean                    0  —
+Get-MicrophoneAudio.ps1                            Clean                    0  —
+Get-TimedScreenshot.ps1                            Clean                    0  —
+Get-VaultCredential.ps1                            Clean                    0  —
+Invoke-CredentialInjection.ps1                     Suspicious              60  MemoryPatch(3)
+Invoke-Mimikatz.ps1                                Suspicious              60  MemoryPatch(3)
+Invoke-NinjaCopy.ps1                               Suspicious              60  MemoryPatch(3)
+Invoke-TokenManipulation.ps1                       Clean                    0  —
+Out-Minidump.ps1                                   Clean                    0  —
+VolumeShadowCopyTools.ps1                          Clean                    0  —
+Get-System.ps1                                     Clean                    0  —
+PowerUp.ps1                                        Clean                    0  —
+Get-ComputerDetail.ps1                             Clean                    0  —
+Get-HttpStatus.ps1                                 Clean                    0  —
+Invoke-CompareAttributesForClass.ps1               Clean                    0  —
+Invoke-Portscan.ps1                                Clean                    0  —
+Invoke-ReverseDnsLookup.ps1                        Clean                    0  —
+PowerView.ps1                                      Clean                    0  —
+Out-CompressedDll.ps1                              Clean                    0  —
+Out-EncodedCommand.ps1                             Clean                    0  —
+Out-EncryptedScript.ps1                            Clean                    0  —
+Remove-Comment.ps1                                 Clean                    0  —
+CodeExecution.tests.ps1                            Clean                    0  —
+Exfiltration.tests.ps1                             Clean                    0  —
+PowerSploit.tests.ps1                              Clean                    0  —
+Privesc.tests.ps1                                  Clean                    0  —
+Recon.tests.ps1                                    Clean                    0  —
+1_patching_clr.ps1                                 AMSI BYPASS             80  MemoryPatch(3)
+10_amsi_open_session.ps1                           AMSI BYPASS            100  AmsiDll(1), ApiCall(1), MemoryPatch(3)
+11_amsi_scan_buffer.ps1                            AMSI BYPASS             80  AmsiDll(1), MemoryPatch(2)
+12_forcing_error.ps1                               AMSI BYPASS            100  ReflectionBypass(3)
+13_disable_script_logging.ps1                      AMSI BYPASS             80  LoggingBypass(3)
+14_amsi_buffer_path.ps1                            AMSI BYPASS             60  MemoryPatch(1), AmsiDll(1)
+15_matt_graebers.ps1                               AMSI BYPASS             80  ReflectionBypass(2)
+16_matt_graebers_autologging_bypass.ps1            AMSI BYPASS             80  ReflectionBypass(2)
+17_matt_graevers_second_reflection.ps1             AMSI BYPASS             80  ReflectionBypass(2)
+18_cornelis_dll_hijack.ps1                         AMSI BYPASS             60  AmsiDll(1), AmsiDllHijack(1)
+19_powershell_2.ps1                                AMSI BYPASS             40  PSv2Downgrade(1)
+2_script_block_smuggling.ps1                       AMSI BYPASS             80  ScriptBlockSmuggling(3)
+20_nishang.ps1                                     AMSI BYPASS            100  ReflectionBypass(3), AmsiDll(1), AmsiDllHijack(1), PSv2Downgrade(1)
+21_adam_chester.ps1                                AMSI BYPASS             60  MemoryPatch(2)
+22_modified_amsi_scan_buffer.ps1                   AMSI BYPASS             80  AmsiDll(1), MemoryPatch(2)
+23_patching_amsi_scan_buffer_address.ps1           AMSI BYPASS             60  AmsiDll(1), MemoryPatch(1)
+24_modern_av.ps1                                   AMSI BYPASS             80  ReflectionBypass(2)
+3_reflection_scancontent_change.ps1                AMSI BYPASS             40  ReflectionBypass(1)
+4_hardware_breakpoints.ps1                         AMSI BYPASS             80  HardwareBreakpoint(2)
+45_modern_av.ps1                                   AMSI BYPASS             80  ReflectionBypass(2)
+5_clr_hooking.ps1                                  AMSI BYPASS             80  MemoryPatch(2), ReflectionBypass(1)
+6_patch_providers_msOav.ps1                        AMSI BYPASS             60  ReflectionBypass(1), MemoryPatch(1)
+7_reflection.ps1                                   AMSI BYPASS             60  ReflectionBypass(1), MemoryPatch(1)
+8_scanning_interception.ps1                        AMSI BYPASS             60  MemoryPatch(2)
+9_rasta_mouse.ps1                                  AMSI BYPASS             80  AmsiDll(1), MemoryPatch(2)
+Invoke-Obfuscation.ps1                             Suspicious              20  ScriptBlockSmuggling(1)
+Out-CompressedCommand.ps1                          Clean                    0  —
+Out-EncodedAsciiCommand.ps1                        Clean                    0  —
+Out-EncodedBinaryCommand.ps1                       Clean                    0  —
+Out-EncodedBXORCommand.ps1                         Clean                    0  —
+Out-EncodedHexCommand.ps1                          Clean                    0  —
+Out-EncodedOctalCommand.ps1                        Clean                    0  —
+Out-EncodedSpecialCharOnlyCommand.ps1              Clean                    0  —
+Out-EncodedWhitespaceCommand.ps1                   Clean                    0  —
+Out-ObfuscatedAst.ps1                              Suspicious              20  ScriptBlockSmuggling(1)
+Out-ObfuscatedStringCommand.ps1                    Clean                    0  —
+Out-ObfuscatedTokenCommand.ps1                     Clean                    0  —
+Out-PowerShellLauncher.ps1                         Clean                    0  —
+Out-SecureStringCommand.ps1                        Clean                    0  —
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Detailed findings:
+
+── Helpers.ps1 ──
+  [High] ScriptBlockSmuggling: Language namespace accessed — AST manipulation / script block smuggling possible
+
+── DNS_TXT_Pwnage.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Execute-OnTime.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Gupt-Backdoor.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── HTTP-Backdoor.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Invoke-AmsiBypass.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in raw source
+  [Critical] ReflectionBypass: 'amsiContext' detected in raw source
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [Critical] AmsiDllHijack: WriteAllBytes with amsi.dll path — writing fake AMSI DLL to disk (DLL hijack bypass)
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Execute-DNSTXT-Code.ps1 ──
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-Mimikatz.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-MimikatzWDigestDowngrade.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-SSIDExfil.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Keylogger.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Invoke-PsGcat.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Invoke-PsGcatAgent.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Add-Exfiltration.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── ConvertTo-ROT13.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Do-Exfiltration.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── Invoke-DllInjection.ps1 ──
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-ReflectivePEInjection.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-Shellcode.ps1 ──
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-CredentialInjection.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-Mimikatz.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── Invoke-NinjaCopy.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [High] MemoryPatch: VirtualAlloc call detected — possible memory-patching bypass
+
+── 1_patching_clr.ps1 ──
+  [Critical] MemoryPatch: 'AmsiScanBuffer' detected in variable-concatenated string
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+
+── 10_amsi_open_session.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [High] ApiCall: 'AmsiOpenSession' detected in raw source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [Critical] MemoryPatch: amsi.dll + AmsiOpenSession — patching session function to bypass scanning
+  [Critical] MemoryPatch: amsi.dll loaded + VirtualProtect — memory patching AMSI function in loaded DLL
+
+── 11_amsi_scan_buffer.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [Critical] MemoryPatch: amsi.dll loaded + VirtualProtect — memory patching AMSI function in loaded DLL
+
+── 12_forcing_error.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiContext' detected in raw source
+  [Critical] ReflectionBypass: 'amsiSession' detected in raw source
+
+── 13_disable_script_logging.ps1 ──
+  [High] LoggingBypass: cachedGroupPolicySettings modified — disables PowerShell script block logging
+  [High] LoggingBypass: System.Management.Automation.Utils accessed via reflection — used to modify logging/policy settings
+  [Critical] LoggingBypass: cachedGroupPolicySettings + ScriptBlockLogging — PowerShell script block logging explicitly disabled
+
+── 14_amsi_buffer_path.ps1 ──
+  [Critical] MemoryPatch: 'AmsiScanBuffer' detected in base64 decoded (TVqQAAMAAAAEAAAA//8A...)
+  [High] AmsiDll: 'amsi.dll' detected in base64 decoded (TVqQAAMAAAAEAAAA//8A...)
+
+── 15_matt_graebers.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in raw source
+
+── 16_matt_graebers_autologging_bypass.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in raw source
+
+── 17_matt_graevers_second_reflection.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiContext' detected in raw source
+
+── 18_cornelis_dll_hijack.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [Critical] AmsiDllHijack: WriteAllBytes with amsi.dll path — writing fake AMSI DLL to disk (DLL hijack bypass)
+
+── 19_powershell_2.ps1 ──
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── 2_script_block_smuggling.ps1 ──
+  [Critical] ScriptBlockSmuggling: ScriptBlockAst constructed manually — spoofed extent hides payload from AMSI
+  [High] ScriptBlockSmuggling: GetScriptBlock() converts manipulated AST to executable block, bypassing AMSI scan
+  [High] ScriptBlockSmuggling: Language namespace accessed — AST manipulation / script block smuggling possible
+
+── 20_nishang.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in raw source
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in raw source
+  [Critical] ReflectionBypass: 'amsiContext' detected in raw source
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [Critical] AmsiDllHijack: WriteAllBytes with amsi.dll path — writing fake AMSI DLL to disk (DLL hijack bypass)
+  [Critical] PSv2Downgrade: PowerShell v2 downgrade — PS v2 has no AMSI support
+
+── 21_adam_chester.ps1 ──
+  [Critical] MemoryPatch: 'AmsiScanBuffer' detected in raw source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+
+── 22_modified_amsi_scan_buffer.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in raw source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [Critical] MemoryPatch: amsi.dll loaded + VirtualProtect — memory patching AMSI function in loaded DLL
+
+── 23_patching_amsi_scan_buffer_address.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in replace-chain string
+  [Critical] MemoryPatch: 'AmsiScanBuffer' detected in replace-chain concat
+
+── 24_modern_av.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in -f format operator result
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in -f format operator result
+
+── 3_reflection_scancontent_change.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in string in source
+
+── 4_hardware_breakpoints.ps1 ──
+  [Critical] HardwareBreakpoint: AMSI_RESULT_CLEAN constant used — hardware breakpoint intercepts AmsiScanBuffer and returns clean
+  [Critical] HardwareBreakpoint: AddVectoredExceptionHandler sets hardware breakpoint on AmsiScanBuffer to intercept scan
+
+── 45_modern_av.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in -f format operator result
+  [Critical] ReflectionBypass: 'amsiInitFailed' detected in -f format operator result
+
+── 5_clr_hooking.ps1 ──
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+  [High] MemoryPatch: WriteProcessMemory call detected — possible memory-patching bypass
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in char-shifted string (ROT-1)
+
+── 6_patch_providers_msOav.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in string in source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+
+── 7_reflection.ps1 ──
+  [Critical] ReflectionBypass: 'System.Management.Automation.AmsiUtils' detected in string in source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+
+── 8_scanning_interception.ps1 ──
+  [Critical] MemoryPatch: 'AmsiInitialize' detected in raw source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+
+── 9_rasta_mouse.ps1 ──
+  [High] AmsiDll: 'amsi.dll' detected in string in source
+  [Critical] MemoryPatch: 'AmsiScanBuffer' detected in string in source
+  [High] MemoryPatch: VirtualProtect call detected — possible memory-patching bypass
+
+── Invoke-Obfuscation.ps1 ──
+  [High] ScriptBlockSmuggling: Language namespace accessed — AST manipulation / script block smuggling possible
+
+── Out-ObfuscatedAst.ps1 ──
+  [High] ScriptBlockSmuggling: Language namespace accessed — AST manipulation / script block smuggling possible
+

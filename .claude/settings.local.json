@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet run *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\VSExclude\\\\confidence\\\\samples\\\\\" -Recurse -File | Select-Object -ExpandProperty FullName | Sort-Object)"
+    ]
+  }
+}

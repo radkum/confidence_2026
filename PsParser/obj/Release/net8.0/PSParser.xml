@@ -1,0 +1,161 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>PSParser</name>
+    </assembly>
+    <members>
+        <member name="T:PSParser.StringFolder">
+            <summary>
+            Statically folds string expressions to their literal value.
+            Handles direct literals and + concatenations of literals.
+            </summary>
+        </member>
+        <member name="M:PSParser.StringFolder.TryFold(PSParser.Expression,System.Collections.Generic.Dictionary{System.String,System.String})">
+            <summary>
+            Tries to fold an expression to a literal string value.
+            Pass <paramref name="vars"/> (mapping $name → value) to enable constant propagation
+            across variable assignments, e.g. $a="Ams"; $b="iSc"; $a+$b → "AmsiSc".
+            </summary>
+        </member>
+        <member name="T:PSParser.AmsiBypassDetector">
+            <summary>
+            Detects AMSI bypass attempts in PowerShell.
+            Combines AST visitor pattern with raw source scanning to handle obfuscated code.
+            </summary>
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.ScanSource(System.String)">
+            <summary>
+            Scans raw PowerShell source for AMSI patterns.
+            Works even when the parser cannot handle the syntax (e.g. [Ref].Assembly...).
+            Call this before or after visiting the AST.
+            </summary>
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.ScanRawText(System.String)">
+            Scans the full raw source text for each StringIndicator.
+            Catches bare-word AMSI names that aren't inside quoted strings
+            (e.g. C# code inside PS here-strings, unquoted function arguments).
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.ExtractReplaceChainStrings(System.String)">
+            <summary>
+            Evaluates $var = 'init'; $var = $var.replace('x','y') chains in source order.
+            Catches patterns like: $s='hello, world'; $s=$s.replace('he','a')... → 'amsi.dll'
+            </summary>
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.ExtractVariableFoldedStrings(System.String)">
+            <summary>
+            Source-level constant propagation: resolves $var assignments to literals,
+            then folds any variable+variable or variable+literal concatenations.
+            Catches patterns like: $a="Ams"; $b="iSc"; ... GetBytes($a+$b+$c+$d)
+            </summary>
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.ExtractFormatStringResults(System.String)">
+            Finds all "{N}" -f args expressions in source and returns the evaluated strings.
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.CaptureArgsString(System.String,System.Int32)">
+            Captures the args string starting at 'start', stopping at unmatched ')' or end-of-statement.
+        </member>
+        <member name="M:PSParser.AmsiBypassDetector.EvalPSExpr(System.String)">
+            Evaluates a PS string expression: handles literals, + concat, and -f format operator.
+        </member>
+        <member name="T:PSParser.AstNode">
+            <summary>
+            Baza dla wszystkich węzłów AST
+            </summary>
+        </member>
+        <member name="T:PSParser.Expression">
+            <summary>
+            Wyrażenie w AST
+            </summary>
+        </member>
+        <member name="T:PSParser.Statement">
+            <summary>
+            Statement w AST
+            </summary>
+        </member>
+        <member name="T:PSParser.InterpolationSegment">
+            <summary>
+            Segment interpolacji w stringach
+            </summary>
+        </member>
+        <member name="T:PSParser.StringEvaluator">
+            <summary>
+            Safe string evaluator - rozwijanie stringów bez execution
+            </summary>
+        </member>
+        <member name="M:PSParser.StringEvaluator.EvaluateExpandableString(PSParser.StringLiteral)">
+            <summary>
+            Bezpiecznie rozwijamy expandowalny string
+            </summary>
+        </member>
+        <member name="M:PSParser.StringEvaluator.UnquoteString(System.String)">
+            <summary>
+            Usuwamy cudzysłowy z stringa
+            </summary>
+        </member>
+        <member name="M:PSParser.StringEvaluator.TryDecodeBase64(System.String)">
+            <summary>
+            Próbujemy dekodować łańcuchy Base64
+            </summary>
+        </member>
+        <member name="M:PSParser.StringEvaluator.DeobfuscateNestedEncoding(System.String)">
+            <summary>
+            Rozwijamy zagnieżdżone kodowanie (Base64 -> Base64 -> ...)
+            </summary>
+        </member>
+        <member name="T:PSParser.ObfuscationDetector">
+            <summary>
+            Detektor obfuscacji - identyfikuje techniki ukrycia
+            </summary>
+        </member>
+        <member name="T:PSParser.ObfuscationIndicator">
+            <summary>
+            Raport z analizy obfuscacji
+            </summary>
+        </member>
+        <member name="T:PSParser.PSParser">
+            <summary>
+            Parser dla PowerShela - konwertuje tokeny na AST
+            </summary>
+        </member>
+        <member name="M:PSParser.PSParser.Parse">
+            <summary>
+            Parsuje kod i zwraca AST
+            </summary>
+        </member>
+        <member name="M:PSParser.PSParser.ExtractInterpolationSegments(System.String)">
+            <summary>
+            Wyodrębnia segmenty interpolacji z expandowalnego stringu
+            </summary>
+        </member>
+        <member name="T:PSParser.PSTokenizer">
+            <summary>
+            Tokenizer dla PowerShela - rozpoznaje tokeny i obsługuje string interpolation
+            </summary>
+        </member>
+        <member name="M:PSParser.PSTokenizer.Tokenize">
+            <summary>
+            Tokenizuje kod i zwraca listę tokenów
+            </summary>
+        </member>
+        <member name="M:PSParser.PSTokenizer.ScanExpandableString">
+            <summary>
+            Skanuje expandowalny string (z $variables lub $(expressions))
+            </summary>
+        </member>
+        <member name="M:PSParser.PSTokenizer.ScanInterpolationExpression">
+            <summary>
+            Skanuje wyrażenie interpolacji w stringu (np. $variable lub $(expression))
+            </summary>
+        </member>
+        <member name="T:PSParser.TokenType">
+            <summary>
+            Reprezentuje typ tokenu w PowerShelu
+            </summary>
+        </member>
+        <member name="T:PSParser.Token">
+            <summary>
+            Reprezentuje pojedynczy token z kodu PowerShela
+            </summary>
+        </member>
+    </members>
+</doc>
