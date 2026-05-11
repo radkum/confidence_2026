@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Set-Location *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet run *)",
+      "PowerShell(dotnet test *)",
+      "PowerShell(git status *)",
+      "PowerShell(git log *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git branch *)",
+      "PowerShell(git show *)",
+      "PowerShell(Select-String *)"
+    ]
+  }
+}

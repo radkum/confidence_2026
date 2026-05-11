@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace PSParser;
@@ -219,6 +221,18 @@ public class AmsiBypassDetector : IAstVisitor
         //     Catches obfuscation like "{6}{3}{1}..." -f 'Util','A',... → "System.Management..."
         foreach (var fmtResult in ExtractFormatStringResults(source))
             CheckValue(fmtResult, "-f format operator result");
+
+        // 16. [char] cast / char array deobfuscation
+        ScanCharCasts(source);
+
+        // 17. XOR deobfuscation: @(bytes) | % { [char]($_ -bxor key) }
+        ScanXorPatterns(source);
+
+        // 18. Unicode escape sequences: `u{0041} → 'A'
+        ScanUnicodeEscapes(source);
+
+        // 19. General reversed-string detection (extends step 3 to non-AMSI keywords)
+        ScanReversedStrings(source);
     }
 
     // ── string extraction helpers ────────────────────────────────────────────
@@ -536,6 +550,286 @@ public class AmsiBypassDetector : IAstVisitor
         return parts;
     }
 
+    // ── Technique 16: [char] cast / char array deobfuscation ────────────────
+
+    /// Scans source for [char]N / [char]0xNN single casts and [char[]] array expressions,
+    /// evaluates them and checks the resulting strings for AMSI keywords.
+    private void ScanCharCasts(string source)
+    {
+        try
+        {
+            // Single [char] casts: collect sequences and join into potential strings
+            var singleMatches = Regex.Matches(source,
+                @"\[char\]\s*(?:0x[0-9a-fA-F]+|\d+)", RegexOptions.IgnoreCase);
+
+            // Build concatenated strings from adjacent [char] casts
+            if (singleMatches.Count > 0)
+            {
+                var sb = new StringBuilder();
+                int prevEnd = -1;
+                foreach (Match m in singleMatches)
+                {
+                    // Adjacent means separated only by + or , or whitespace
+                    if (prevEnd >= 0)
+                    {
+                        var gap = source[prevEnd..m.Index];
+                        if (!Regex.IsMatch(gap, @"^[\s+,]*$"))
+                        {
+                            // Gap contains something else — flush current accumulation
+                            if (sb.Length > 0)
+                            {
+                                CheckValue(sb.ToString(), "[char] cast sequence");
+                                CheckObfuscation(sb.ToString(), "CharCast");
+                                sb.Clear();
+                            }
+                        }
+                    }
+
+                    var ch = StringEvaluator.TryEvalCharCast(m.Value);
+                    if (ch != null)
+                        sb.Append(ch);
+                    prevEnd = m.Index + m.Length;
+                }
+
+                if (sb.Length > 0)
+                {
+                    CheckValue(sb.ToString(), "[char] cast sequence");
+                    CheckObfuscation(sb.ToString(), "CharCast");
+                }
+            }
+
+            // [char[]] array expressions
+            foreach (Match m in Regex.Matches(source,
+                @"(?:-join\s*\(?\s*)?\[char\[\]\]\s*@?\s*\([^)]+\)(?:\s*\))?(?:\s*-join\s*'')?",
+                RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalCharArray(m.Value);
+                if (decoded != null)
+                {
+                    CheckValue(decoded, "[char[]] array expression");
+                    CheckObfuscation(decoded, "CharArray");
+                }
+            }
+        }
+        catch { /* never crash on malformed input */ }
+    }
+
+    // ── Technique 17: XOR deobfuscation ─────────────────────────────────────
+
+    /// Scans source for byte-array XOR patterns, including multi-statement forms:
+    ///   $e=@(0x62,0xcc,...); $e|%{[char]($_-bxor key)}
+    ///   -join($encoded | % { [char]($_ -bxor $key) })
+    private void ScanXorPatterns(string source)
+    {
+        try
+        {
+            // Strategy A: array and -bxor appear close together (single expression)
+            foreach (Match m in Regex.Matches(source,
+                @"@\s*\([0-9a-fA-F\s,x]+\)[^;\r\n]{0,120}-bxor\s*(?:0x[0-9a-fA-F]+|\d+)",
+                RegexOptions.IgnoreCase))
+            {
+                TryDecodeXorMatch(m.Value, "XOR inline expression");
+            }
+
+            // Strategy B: byte array assigned to variable, key used later in same source.
+            // Collect all byte arrays found anywhere in source.
+            var byteArrays = new List<byte[]>();
+            foreach (Match m in Regex.Matches(source,
+                @"@\s*\(((?:\s*(?:0x[0-9a-fA-F]+|\d+)\s*,?\s*)+)\)",
+                RegexOptions.IgnoreCase))
+            {
+                var parsed = ParseByteList(m.Groups[1].Value);
+                if (parsed != null && parsed.Length >= 2)
+                    byteArrays.Add(parsed);
+            }
+
+            // Collect all XOR key literals found anywhere in source.
+            var xorKeys = new List<int>();
+            foreach (Match m in Regex.Matches(source,
+                @"-bxor\s*(?:0x([0-9a-fA-F]+)|(\d+))",
+                RegexOptions.IgnoreCase))
+            {
+                int key = m.Groups[1].Success
+                    ? Convert.ToInt32(m.Groups[1].Value, 16)
+                    : int.Parse(m.Groups[2].Value);
+                if (!xorKeys.Contains(key))
+                    xorKeys.Add(key);
+            }
+
+            // Cross-product: try every (array, key) combination
+            foreach (var arr in byteArrays)
+                foreach (var key in xorKeys)
+                    TryDecodeXorDirect(arr, key, "XOR byte array + key");
+        }
+        catch { }
+    }
+
+    private void TryDecodeXorMatch(string fragment, string context)
+    {
+        var decoded = StringEvaluator.TryEvalXor(fragment);
+        if (decoded != null)
+        {
+            CheckValue(decoded, context);
+            FlagObfuscation(decoded, "XorObfuscation", "High",
+                $"XOR-decoded byte array: '{Truncate(decoded, 60)}'");
+        }
+    }
+
+    private void TryDecodeXorDirect(byte[] arr, int key, string context)
+    {
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var b in arr)
+                sb.Append((char)(b ^ key));
+            var result = sb.ToString();
+            int printable = result.Count(c => c >= 0x20 && c <= 0x7E);
+            if (result.Length == 0 || (double)printable / result.Length < 0.8) return;
+
+            CheckValue(result, context);
+            FlagObfuscation(result, "XorObfuscation", "High",
+                $"XOR-decoded byte array (key=0x{key:X2}): '{Truncate(result, 60)}'");
+        }
+        catch { }
+    }
+
+    private static byte[]? ParseByteList(string list)
+    {
+        try
+        {
+            var parts = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var result = new List<byte>();
+            foreach (var p in parts)
+            {
+                int v = p.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.ToInt32(p, 16)
+                    : int.Parse(p);
+                if (v < 0 || v > 255) return null;
+                result.Add((byte)v);
+            }
+            return result.Count > 0 ? [.. result] : null;
+        }
+        catch { return null; }
+    }
+
+    // ── Technique 18: Unicode escape deobfuscation ───────────────────────────
+
+    /// Scans source for PowerShell 6+ unicode escape sequences (`u{NNNN}).
+    private void ScanUnicodeEscapes(string source)
+    {
+        try
+        {
+            if (!Regex.IsMatch(source, @"`u\{[0-9a-fA-F]+\}", RegexOptions.IgnoreCase))
+                return;
+
+            // Find sequences of consecutive `u{...} escapes (possibly inside a string)
+            foreach (Match m in Regex.Matches(source,
+                @"(?:`u\{[0-9a-fA-F]+\})+", RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalUnicodeEscape(m.Value);
+                if (decoded != null)
+                {
+                    CheckValue(decoded, "unicode escape sequence");
+                    CheckObfuscation(decoded, "UnicodeEscape");
+                }
+            }
+
+            // Also try to decode entire quoted strings that contain escapes
+            foreach (Match m in Regex.Matches(source,
+                @"""([^""\r\n]*`u\{[^""\r\n]*)""", RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalUnicodeEscape(m.Groups[1].Value);
+                if (decoded != null)
+                {
+                    CheckValue(decoded, "unicode-escaped string literal");
+                    CheckObfuscation(decoded, "UnicodeEscape");
+                }
+            }
+        }
+        catch { }
+    }
+
+    // ── Technique 19: General reversed-string detection ──────────────────────
+
+    /// Detects "string"[-1..-N] -join '' patterns and bare reversed quoted strings
+    /// that, when reversed, contain suspicious keywords.
+    private void ScanReversedStrings(string source)
+    {
+        try
+        {
+            var suspiciousKeywords = new[]
+            {
+                "amsi", "invoke", "iex", "bypass", "payload", "shellcode",
+                "loadlibrary", "virtualprotect", "writeprocessmemory",
+                "reflection", "assembly", "scriptblock"
+            };
+
+            // Pattern: "somestring"[-1..-N] -join ''
+            foreach (Match m in Regex.Matches(source,
+                @"""([^""\r\n]{6,})""\s*\[-1\s*\.\.-\s*\d+\]", RegexOptions.IgnoreCase))
+            {
+                var reversed = new string(m.Groups[1].Value.Reverse().ToArray());
+                if (IsSuspiciousReversed(reversed, suspiciousKeywords))
+                    FlagObfuscation(reversed, "ReversedString", "Medium",
+                        $"Reversed string slice detected, decoded: '{Truncate(reversed, 60)}'");
+            }
+
+            // Also catch bare reversed strings not already caught by step 3 AMSI check
+            foreach (Match m in Regex.Matches(source, @"""([^""\r\n]{8,})"""))
+            {
+                var reversed = new string(m.Groups[1].Value.Reverse().ToArray());
+                // Skip pure AMSI — already covered by CheckValue in step 3
+                if (reversed.Contains("amsi", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (IsSuspiciousReversed(reversed, suspiciousKeywords))
+                    FlagObfuscation(reversed, "ReversedString", "Medium",
+                        $"Reversed string detected, decoded: '{Truncate(reversed, 60)}'");
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsSuspiciousReversed(string reversed, string[] keywords) =>
+        keywords.Any(k => reversed.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "...";
+
+    /// Flags a generic obfuscation indicator (non-AMSI specific) — deduped by key.
+    private void FlagObfuscation(string value, string type, string severity, string description)
+    {
+        var key = $"{type}:{value.ToLowerInvariant()[..Math.Min(40, value.Length)]}";
+        if (_seen.Add(key))
+            Report.AddIndicator(new AmsiIndicator
+            {
+                Type         = type,
+                Severity     = severity,
+                Description  = description,
+                MatchedValue = value.Length > 100 ? value[..100] + "..." : value
+            });
+    }
+
+    /// Checks a decoded value for AMSI strings AND flags generic obfuscation if the
+    /// decoded value reveals something notable (non-empty, printable).
+    private void CheckObfuscation(string value, string techniqueType)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        // Only flag if the value contains something interesting beyond a single char
+        if (value.Length >= 4)
+        {
+            var key = $"{techniqueType}:decoded:{value.ToLowerInvariant()[..Math.Min(40, value.Length)]}";
+            if (_seen.Add(key))
+                Report.AddIndicator(new AmsiIndicator
+                {
+                    Type         = techniqueType,
+                    Severity     = "Medium",
+                    Description  = $"Obfuscated content decoded via {techniqueType}: '{Truncate(value, 60)}'",
+                    MatchedValue = value.Length > 100 ? value[..100] + "..." : value
+                });
+        }
+    }
+
     private static string? TryBase64Decode(string s)
     {
         try
@@ -677,17 +971,32 @@ public class AmsiBypassDetector : IAstVisitor
 
 public class AmsiIndicator
 {
+    [JsonPropertyName("type")]
     public string Type         { get; set; } = "";
+
+    [JsonPropertyName("severity")]
     public string Severity     { get; set; } = "";
+
+    [JsonPropertyName("description")]
     public string Description  { get; set; } = "";
+
+    [JsonPropertyName("matched_value")]
     public string MatchedValue { get; set; } = "";
 }
 
 public class AmsiBypassReport
 {
-    public List<AmsiIndicator> Indicators   { get; } = new();
-    public bool                IsAmsiBypass => Indicators.Any(i => i.Severity == "Critical");
-    public int                 ConfidenceScore { get; private set; }
+    private static readonly JsonSerializerOptions s_indented = new() { WriteIndented = true  };
+    private static readonly JsonSerializerOptions s_compact  = new() { WriteIndented = false };
+
+    [JsonPropertyName("is_amsi_bypass")]
+    public bool IsAmsiBypass => Indicators.Any(i => i.Severity == "Critical");
+
+    [JsonPropertyName("confidence_score")]
+    public int ConfidenceScore { get; private set; }
+
+    [JsonPropertyName("indicators")]
+    public List<AmsiIndicator> Indicators { get; } = new();
 
     public void AddIndicator(AmsiIndicator ind)
     {
@@ -700,6 +1009,9 @@ public class AmsiBypassReport
             _          => 5
         }));
     }
+
+    public string ToJson(bool indented = true) =>
+        JsonSerializer.Serialize(this, indented ? s_indented : s_compact);
 
     public override string ToString()
     {

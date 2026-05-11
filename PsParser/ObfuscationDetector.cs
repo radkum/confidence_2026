@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace PSParser;
@@ -138,6 +140,159 @@ public class StringEvaluator
 
         return keywords.Any(k => lowerText.Contains(k));
     }
+
+    // ── Technique 1: [char] cast / char array deobfuscation ─────────────────
+
+    /// <summary>
+    /// Evaluates [char]0x41 or [char]65 expressions, returning the character string.
+    /// Returns null if the pattern is not recognized or fails.
+    /// </summary>
+    public static string? TryEvalCharCast(string input)
+    {
+        try
+        {
+            input = input.Trim();
+            var m = Regex.Match(input, @"^\[char\]\s*(?:0x([0-9a-fA-F]+)|(\d+))$",
+                RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+
+            int codePoint = m.Groups[1].Success
+                ? Convert.ToInt32(m.Groups[1].Value, 16)
+                : int.Parse(m.Groups[2].Value);
+
+            if (codePoint < 0 || codePoint > 0x10FFFF) return null;
+            return char.ConvertFromUtf32(codePoint);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Evaluates [char[]]@(65,109,115,105) or -join([char[]](65,109,115,105)) style expressions.
+    /// Returns the resulting string, or null if pattern is not recognized.
+    /// </summary>
+    public static string? TryEvalCharArray(string input)
+    {
+        try
+        {
+            input = input.Trim();
+
+            // Strip optional leading -join or (-join ... )
+            var joinPrefix = Regex.Match(input,
+                @"^-join\s*\(?\s*\[char\[\]\]\s*@?\s*\(([^)]+)\)\s*\)?$",
+                RegexOptions.IgnoreCase);
+            if (joinPrefix.Success)
+                return CharArrayFromNumberList(joinPrefix.Groups[1].Value);
+
+            // [char[]]@(65,...) or [char[]](65,...) with optional trailing -join '' / -join ""
+            var plain = Regex.Match(input,
+                @"^\[char\[\]\]\s*@?\s*\(([^)]+)\)(?:\s*-join\s*(?:''|""\s*""))?$",
+                RegexOptions.IgnoreCase);
+            if (plain.Success)
+                return CharArrayFromNumberList(plain.Groups[1].Value);
+
+            return null;
+        }
+        catch { return null; }
+    }
+
+    private static string? CharArrayFromNumberList(string list)
+    {
+        try
+        {
+            var parts = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var sb = new StringBuilder();
+            foreach (var part in parts)
+            {
+                int v = part.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.ToInt32(part, 16)
+                    : int.Parse(part);
+                if (v < 0 || v > 0x10FFFF) return null;
+                sb.Append(char.ConvertFromUtf32(v));
+            }
+            return sb.ToString();
+        }
+        catch { return null; }
+    }
+
+    // ── Technique 2: XOR deobfuscation ──────────────────────────────────────
+
+    /// <summary>
+    /// Evaluates patterns like:
+    ///   $e=@(0x62,0xcc,...); $e|%{[char]($_-bxor 0x03)}
+    ///   -join($encoded | % { [char]($_ -bxor $key) })
+    /// Returns the decoded string if printable (>80% printable ASCII), else null.
+    /// </summary>
+    public static string? TryEvalXor(string input)
+    {
+        try
+        {
+            // Extract byte array values
+            var bytesMatch = Regex.Match(input,
+                @"@\s*\(([0-9a-fA-F\s,x]+)\)",
+                RegexOptions.IgnoreCase);
+            if (!bytesMatch.Success) return null;
+
+            var byteList = bytesMatch.Groups[1].Value
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.ToByte(s[2..], 16)
+                    : byte.Parse(s))
+                .ToArray();
+
+            if (byteList.Length == 0) return null;
+
+            // Extract XOR key — look for -bxor followed by a literal
+            var keyMatch = Regex.Match(input,
+                @"-bxor\s*(?:0x([0-9a-fA-F]+)|(\d+))",
+                RegexOptions.IgnoreCase);
+            if (!keyMatch.Success) return null;
+
+            int key = keyMatch.Groups[1].Success
+                ? Convert.ToInt32(keyMatch.Groups[1].Value, 16)
+                : int.Parse(keyMatch.Groups[2].Value);
+
+            var decoded = new StringBuilder();
+            foreach (var b in byteList)
+                decoded.Append((char)(b ^ key));
+
+            var result = decoded.ToString();
+
+            // Validate: >80% printable ASCII
+            int printable = result.Count(c => c >= 0x20 && c <= 0x7E);
+            if (result.Length == 0 || (double)printable / result.Length < 0.8)
+                return null;
+
+            return result;
+        }
+        catch { return null; }
+    }
+
+    // ── Technique 3: Unicode/hex escape deobfuscation ───────────────────────
+
+    /// <summary>
+    /// Evaluates PowerShell 6+ unicode escape sequences: `u{0041} → 'A'.
+    /// Returns null if no such sequences are found.
+    /// </summary>
+    public static string? TryEvalUnicodeEscape(string input)
+    {
+        try
+        {
+            if (!Regex.IsMatch(input, @"`u\{[0-9a-fA-F]+\}", RegexOptions.IgnoreCase))
+                return null;
+
+            var result = Regex.Replace(input,
+                @"`u\{([0-9a-fA-F]+)\}",
+                m =>
+                {
+                    int codePoint = Convert.ToInt32(m.Groups[1].Value, 16);
+                    return char.ConvertFromUtf32(codePoint);
+                },
+                RegexOptions.IgnoreCase);
+
+            return result;
+        }
+        catch { return null; }
+    }
 }
 
 /// <summary>
@@ -264,15 +419,26 @@ public class ObfuscationDetector : IAstVisitor
 /// </summary>
 public class ObfuscationIndicator
 {
-    public string Type { get; set; }
-    public string Severity { get; set; } // Low, Medium, High, Critical
-    public string Description { get; set; }
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("severity")]
+    public string Severity { get; set; } = ""; // Low, Medium, High, Critical
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = "";
 }
 
 public class ObfuscationReport
 {
-    public List<ObfuscationIndicator> Indicators { get; } = new();
+    private static readonly JsonSerializerOptions s_indented    = new() { WriteIndented = true  };
+    private static readonly JsonSerializerOptions s_compact     = new() { WriteIndented = false };
+
+    [JsonPropertyName("suspicion_score")]
     public double SuspicionScore { get; private set; }
+
+    [JsonPropertyName("indicators")]
+    public List<ObfuscationIndicator> Indicators { get; } = new();
 
     public void AddIndicator(ObfuscationIndicator indicator)
     {
@@ -298,6 +464,9 @@ public class ObfuscationReport
 
         SuspicionScore = Math.Min(10.0, score / 10.0);
     }
+
+    public string ToJson(bool indented = true) =>
+        JsonSerializer.Serialize(this, indented ? s_indented : s_compact);
 
     public override string ToString()
     {
