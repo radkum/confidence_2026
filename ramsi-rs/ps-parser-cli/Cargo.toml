@@ -1,0 +1,14 @@
+[package]
+name = "ps-parser-cli"
+version = "0.1.0"
+edition = "2024"
+description = "PowerShell scanner CLI based on the ps-parser crate -- emits JSON compatible with PsParser.exe --json"
+
+[[bin]]
+name = "ps-parser-cli"
+path = "src/main.rs"
+
+[dependencies]
+ps-parser = "1.0.1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
