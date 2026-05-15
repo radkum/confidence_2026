@@ -40,6 +40,7 @@ set "ERRS=0"
 
 call :CP_BIN "%ROOT%\PsParser\publish\PSParser.dll"              "PSParser.dll"
 call :CP_BIN "%ROOT%\PsParser\publish_exe\PSParser.exe"          "PSParser.exe"
+call :CP_BIN "%ROOT%\ramsi-rs\target\release\ps-parser-cli.exe"  "ps-parser-cli.exe"
 call :CP_BIN "%ROOT%\ramsi-rs\target\release\ramsi_com.dll"      "ramsi_com.dll"
 call :CP_BIN "%ROOT%\sysmon-rs\target\release\sysmon.sys"        "sysmon.sys"
 call :CP_BIN "%ROOT%\sysmon-rs\target\release\sysmon-client.exe" "sysmon-um.exe"

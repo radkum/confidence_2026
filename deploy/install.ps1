@@ -30,6 +30,7 @@ if (Test-Path "$ScriptDir\bin\PSParser.dll") {
     $BinDir          = "$ScriptDir\bin"
     $SrcPsParser     = "$BinDir\PSParser.dll"
     $SrcPsParserExe  = "$BinDir\PSParser.exe"
+    $SrcPsCli        = "$BinDir\ps-parser-cli.exe"
     $SrcRamsi        = "$BinDir\ramsi_com.dll"
     $SrcSysmonSys    = "$BinDir\sysmon.sys"
     $SrcSysmonUm     = "$BinDir\sysmon-um.exe"
@@ -37,6 +38,7 @@ if (Test-Path "$ScriptDir\bin\PSParser.dll") {
     $Root            = Split-Path -Parent $ScriptDir
     $SrcPsParser     = "$Root\PsParser\publish\PSParser.dll"
     $SrcPsParserExe  = "$Root\PsParser\publish_exe\PSParser.exe"
+    $SrcPsCli        = "$Root\ramsi-rs\target\release\ps-parser-cli.exe"
     $SrcRamsi        = "$Root\ramsi-rs\target\release\ramsi_com.dll"
     $SrcSysmonSys    = "$Root\sysmon-rs\target\release\sysmon.sys"
     $SrcSysmonUm     = "$Root\sysmon-rs\target\release\sysmon-client.exe"
@@ -67,7 +69,7 @@ LogH "========================================"
 LogH ""
 LogH "[PRE-CHECK] Source files..."
 $missing = @()
-foreach ($src in @($SrcPsParser, $SrcRamsi, $SrcSysmonSys, $SrcSysmonUm)) {
+foreach ($src in @($SrcPsParser, $SrcPsCli, $SrcRamsi, $SrcSysmonSys, $SrcSysmonUm)) {
     if (Test-Path $src) {
         Log "[OK]   $(Split-Path -Leaf $src)"
     } else {
@@ -122,6 +124,7 @@ function Copy-FileForce([string]$src, [string]$dst) {
 
 Copy-FileForce $SrcPsParser    "$InstallDir\PSParser.dll"
 Copy-FileForce $SrcPsParserExe "$InstallDir\PSParser.exe"
+Copy-FileForce $SrcPsCli       "$InstallDir\ps-parser-cli.exe"
 Copy-FileForce $SrcRamsi       "$InstallDir\ramsi_com.dll"
 Copy-FileForce $SrcSysmonUm    "$InstallDir\sysmon-um.exe"
 Copy-FileForce $SrcSysmonSys   "$DriversDir\sysmon.sys"

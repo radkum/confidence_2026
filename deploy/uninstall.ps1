@@ -149,7 +149,7 @@ LogH ""
 LogH "[4/5] Removing files from $InstallDir..."
 
 if (Test-Path $InstallDir) {
-    foreach ($file in @('PSParser.dll', 'ramsi_com.dll', 'sysmon-um.exe')) {
+    foreach ($file in @('PSParser.dll', 'PSParser.exe', 'ps-parser-cli.exe', 'ramsi_com.dll', 'sysmon-um.exe')) {
         Remove-FileForce -path "$InstallDir\$file"
     }
     $remaining = @(Get-ChildItem $InstallDir -ErrorAction SilentlyContinue)

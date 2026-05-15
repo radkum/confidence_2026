@@ -68,12 +68,12 @@ fn write_red_to_target_console(target_pid: u32, message: &str) {
     }
 }
 
-// Candidate locations for PsParser.exe (compiled standalone) -- checked in order.
-// We prefer the standalone .exe so we don't spawn `dotnet run` (slow + needs source path).
-const PSPARSER_EXE_CANDIDATES: &[&str] = &[
-    r"C:\Program Files\Confidence\PSParser.exe",
-    r"C:\VSExclude\confidence_2026\PsParser\bin\Release\net8.0\PSParser.exe",
-    r"C:\VSExclude\confidence_2026\PsParser\bin\Debug\net8.0\PSParser.exe",
+// Candidate locations for ps-parser-cli.exe (Rust scanner) -- checked in order.
+// Standalone binary, no .NET runtime needed.
+const PSCLI_EXE_CANDIDATES: &[&str] = &[
+    r"C:\Program Files\Confidence\ps-parser-cli.exe",
+    r"C:\VSExclude\confidence_2026\ramsi-rs\target\release\ps-parser-cli.exe",
+    r"C:\VSExclude\confidence_2026\ramsi-rs\target\debug\ps-parser-cli.exe",
 ];
 
 // Suspicious DLL names (case-insensitive check)
@@ -360,12 +360,12 @@ fn check_and_kill(pid: u32, pid_cmdline: &HashMap<u32, String>, trigger: &str) {
     };
 
     println!(
-        "    [>] Scanning pid={} via PsParser (trigger: {}, source: {})",
+        "    [>] Scanning pid={} via ps-parser-cli (trigger: {}, source: {})",
         pid, trigger, source
     );
     println!("        cmdline: {}", &cmdline[..cmdline.len().min(100)]);
 
-    match run_psparser(&cmdline) {
+    match run_scanner(&cmdline) {
         Some(result) => {
             println!(
                 "        is_amsi_bypass={} confidence={}",
@@ -377,7 +377,7 @@ fn check_and_kill(pid: u32, pid_cmdline: &HashMap<u32, String>, trigger: &str) {
             }
         }
         None => {
-            println!("    [?] PsParser scan failed for pid={}", pid);
+            println!("    [?] scan failed for pid={}", pid);
         }
     }
 }
@@ -387,14 +387,13 @@ struct ScanResult {
     confidence: u32,
 }
 
-fn find_psparser_exe() -> Option<&'static str> {
-    PSPARSER_EXE_CANDIDATES.iter().find(|p| std::path::Path::new(p).exists()).copied()
+fn find_scanner_exe() -> Option<&'static str> {
+    PSCLI_EXE_CANDIDATES.iter().find(|p| std::path::Path::new(p).exists()).copied()
 }
 
-fn run_psparser(input: &str) -> Option<ScanResult> {
-    let exe = find_psparser_exe()?;
+fn run_scanner(input: &str) -> Option<ScanResult> {
+    let exe = find_scanner_exe()?;
 
-    // Write input to temp file
     let tmp_path = std::env::temp_dir().join(format!("sysmon_scan_{}.ps1", std::process::id()));
     std::fs::write(&tmp_path, input).ok()?;
 
@@ -405,23 +404,19 @@ fn run_psparser(input: &str) -> Option<ScanResult> {
 
     let _ = std::fs::remove_file(&tmp_path);
 
+    // ps-parser-cli writes status messages to stderr and a single JSON object
+    // (pretty-printed across multiple lines) to stdout. Parse the whole stdout.
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(stdout.trim()).ok()?;
 
-    // Find JSON line
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.starts_with('{') {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                let is_bypass = v["is_amsi_bypass"].as_bool().unwrap_or(false);
-                let confidence = v["confidence_score"].as_u64().unwrap_or(0) as u32;
-                return Some(ScanResult {
-                    is_bypass,
-                    confidence,
-                });
-            }
-        }
-    }
-    None
+    let bypass_obj = v.get("amsi_bypass")?;
+    let is_bypass = bypass_obj.get("is_amsi_bypass")?.as_bool()?;
+    let confidence = bypass_obj
+        .get("confidence_score")?
+        .as_u64()
+        .unwrap_or(0) as u32;
+
+    Some(ScanResult { is_bypass, confidence })
 }
 
 fn kill_process(pid: u32) {
