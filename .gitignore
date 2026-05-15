@@ -51,6 +51,7 @@ progress.md
 *.bak
 *.bak[0-9]
 *.bak[0-9][0-9]
+*.bak_*
 *.tmp
 *.swp
 *.swo

