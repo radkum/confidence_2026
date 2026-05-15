@@ -97,6 +97,51 @@ public class AmsiBypassDetector : IAstVisitor
         ("System.Management.Automation.Utils",
             "LoggingBypass", "High",
             "System.Management.Automation.Utils accessed via reflection — used to modify logging/policy settings"),
+        // ETW bypass
+        ("PSEtwLogProvider",
+            "EtwBypass", "Critical",
+            "PSEtwLogProvider accessed via reflection — disables PowerShell ETW event tracing"),
+        ("etwProvider",
+            "EtwBypass", "High",
+            "etwProvider field access — used to null ETW provider and suppress logging"),
+        ("System.Management.Automation.Tracing",
+            "EtwBypass", "High",
+            "System.Management.Automation.Tracing namespace accessed — ETW tracing manipulation"),
+        // WLDP bypass
+        ("WldpQueryDynamicCodeTrust",
+            "WldpBypass", "Critical",
+            "WldpQueryDynamicCodeTrust hook — bypasses Windows Lockdown Policy dynamic code trust"),
+        ("WldpIsClassInApprovedList",
+            "WldpBypass", "High",
+            "WldpIsClassInApprovedList hook — bypasses WLDP class allowlist check"),
+        // AMSI provider enumeration -- reconnaissance for provider-targeted attacks
+        ("SOFTWARE\\Microsoft\\AMSI\\Providers",
+            "AmsiProviderEnum", "Critical",
+            "Enumerates AMSI providers registry — typical reconnaissance before vtable/DLL patching"),
+        ("HKLM:\\SOFTWARE\\Microsoft\\AMSI",
+            "AmsiProviderEnum", "Critical",
+            "HKLM AMSI registry path access — no legitimate use; AMSI provider lookup"),
+        // COM-direct vtable manipulation pattern (only fires together → captured by ComboBonus below)
+        ("DllGetClassObject",
+            "ComManipulation", "High",
+            "Direct DllGetClassObject invocation — used to obtain raw AMSI provider COM objects"),
+        ("GetDelegateForFunctionPointer",
+            "ComManipulation", "High",
+            "Marshal.GetDelegateForFunctionPointer — used in vtable hijacking"),
+        // Note: these match the bare method name (literal substring, not regex),
+        // so they fire on `[Marshal]::WriteIntPtr(...)` and `Marshal.WriteIntPtr(...)` alike.
+        ("WriteIntPtr",
+            "VtableManipulation", "Critical",
+            "WriteIntPtr — writes raw pointers (vtable entry override)"),
+        ("ReadIntPtr",
+            "VtableManipulation", "High",
+            "ReadIntPtr — reads pointers from arbitrary memory (vtable walking)"),
+        ("AllocHGlobal",
+            "VtableManipulation", "High",
+            "AllocHGlobal — allocates raw memory; often used to construct fake vtables"),
+        ("UnmanagedFunctionPointer",
+            "ComManipulation", "High",
+            "UnmanagedFunctionPointer attribute — declares delegate for arbitrary native function (vtable hijack helper)"),
     };
 
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
@@ -120,12 +165,26 @@ public class AmsiBypassDetector : IAstVisitor
         foreach (var s in ExtractFoldedStrings(source))
             CheckValue(s, "string in source");
 
-        // 2. Try to decode any base64 segments (≥20 chars)
-        foreach (Match m in Regex.Matches(source, @"[A-Za-z0-9+/]{20,}={0,2}"))
+        // 2. Recursively decode Base64 segments (≥20 chars), up to 8 layers deep.
+        //    After each decode, scan the result for further Base64 blobs.
+        //    This handles double/triple-encoded payloads (double_base64 obfuscation).
+        var b64Rx = new Regex(@"[A-Za-z0-9+/]{20,}={0,2}");
+        var b64Queue = new Queue<(string Blob, int Depth)>();
+        var b64Seen  = new HashSet<string>();
+        foreach (Match m in b64Rx.Matches(source))
+            if (b64Seen.Add(m.Value))
+                b64Queue.Enqueue((m.Value, 0));
+
+        while (b64Queue.Count > 0)
         {
-            var decoded = TryBase64Decode(m.Value);
-            if (decoded != null)
-                CheckValue(decoded, $"base64 decoded ({m.Value[..Math.Min(20, m.Value.Length)]}...)");
+            var (blob, depth) = b64Queue.Dequeue();
+            if (depth >= 8) continue;
+            var decoded = TryBase64Decode(blob);
+            if (decoded == null) continue;
+            CheckValue(decoded, $"base64 decoded (layer {depth + 1}, {blob[..Math.Min(16, blob.Length)]}...)");
+            foreach (Match inner in b64Rx.Matches(decoded))
+                if (b64Seen.Add(inner.Value))
+                    b64Queue.Enqueue((inner.Value, depth + 1));
         }
 
         // 3. Check for reversed strings (unloadobfuscated technique):
@@ -233,6 +292,15 @@ public class AmsiBypassDetector : IAstVisitor
 
         // 19. General reversed-string detection (extends step 3 to non-AMSI keywords)
         ScanReversedStrings(source);
+
+        // 20. Backtick deobfuscation: `Am`si` → Amsi (PowerShell ignores backticks in identifiers)
+        ScanBacktickObfuscation(source);
+
+        // 21. Add-Type C# injection: Add-Type -TypeDefinition with AMSI-patching C# code
+        ScanAddTypeInjection(source);
+
+        // 22. Environment variable character indexing: $env:ComSpec[14,15,...] -join ''
+        ScanEnvVarCharIndexing(source);
     }
 
     // ── string extraction helpers ────────────────────────────────────────────
@@ -793,8 +861,149 @@ public class AmsiBypassDetector : IAstVisitor
     private static bool IsSuspiciousReversed(string reversed, string[] keywords) =>
         keywords.Any(k => reversed.Contains(k, StringComparison.OrdinalIgnoreCase));
 
+    // ── Technique 21: Add-Type C# injection ─────────────────────────────────
+
+    private void ScanAddTypeInjection(string source)
+    {
+        try
+        {
+            var addTypeRx = new Regex(
+                @"Add-Type\s+(?:-TypeDefinition|-Language\s+CSharp)[^""']*(?:""([^""]{20,})""|'([^']{20,})'|@""([\s\S]*?)""@|@'([\s\S]*?)'@)",
+                RegexOptions.IgnoreCase);
+            foreach (Match m in addTypeRx.Matches(source))
+            {
+                var body = m.Groups[1].Success ? m.Groups[1].Value
+                         : m.Groups[2].Success ? m.Groups[2].Value
+                         : m.Groups[3].Success ? m.Groups[3].Value
+                         : m.Groups[4].Value;
+                if (string.IsNullOrEmpty(body)) continue;
+                CheckValue(body, "Add-Type C# body");
+                ScanRawText(body);
+                foreach (var api in MemoryPatchApis)
+                    if (body.Contains(api, StringComparison.OrdinalIgnoreCase))
+                        FlagApi("Add-Type+" + api, "AddTypeInjection", "Critical",
+                            $"Add-Type C# injection with {api} — inline C# used to patch AMSI");
+            }
+            if (source.Contains("Add-Type", StringComparison.OrdinalIgnoreCase) &&
+                source.Contains("amsi.dll", StringComparison.OrdinalIgnoreCase))
+                FlagApi("Add-Type+amsi.dll", "AddTypeInjection", "Critical",
+                    "Add-Type combined with amsi.dll reference — C# code loading/patching AMSI");
+        }
+        catch { }
+    }
+
+    // ── Technique 22: Environment variable character indexing ────────────────
+
+    private void ScanEnvVarCharIndexing(string source)
+    {
+        try
+        {
+            var envValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "ComSpec",      @"C:\Windows\system32\cmd.exe" },
+                { "windir",       @"C:\Windows" },
+                { "SystemRoot",   @"C:\Windows" },
+                { "PSModulePath", @"C:\Users\Public\Documents\WindowsPowerShell\Modules;C:\Program Files\WindowsPowerShell\Modules;C:\Windows\system32\WindowsPowerShell\v1.0\Modules" },
+                { "PATHEXT",      ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC" },
+            };
+
+            var envRx = new Regex(@"\$env:(\w+)\s*\[([0-9,\.\s\-]+)\](?:\s*-join\s*['""]['""])?",
+                RegexOptions.IgnoreCase);
+            foreach (Match m in envRx.Matches(source))
+            {
+                var varName = m.Groups[1].Value;
+                if (!envValues.TryGetValue(varName, out var envVal)) continue;
+                var indexExpr = m.Groups[2].Value.Trim();
+
+                var chars = new StringBuilder();
+                var rangeM = Regex.Match(indexExpr, @"^(-?\d+)\s*\.\.\s*(-?\d+)$");
+                if (rangeM.Success)
+                {
+                    int from = int.Parse(rangeM.Groups[1].Value);
+                    int to   = int.Parse(rangeM.Groups[2].Value);
+                    if (from < 0) from = envVal.Length + from;
+                    if (to   < 0) to   = envVal.Length + to;
+                    for (int i = Math.Min(from, to); i <= Math.Max(from, to) && i < envVal.Length; i++)
+                        chars.Append(envVal[i]);
+                }
+                else
+                {
+                    foreach (var part in indexExpr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        if (!int.TryParse(part.Trim(), out int idx)) continue;
+                        if (idx < 0) idx = envVal.Length + idx;
+                        if (idx >= 0 && idx < envVal.Length) chars.Append(envVal[idx]);
+                    }
+                }
+
+                var result = chars.ToString();
+                if (result.Length >= 3)
+                {
+                    CheckValue(result, $"$env:{varName} char indexing");
+                    FlagObfuscation(result, "EnvVarCharIndex", "Medium",
+                        $"$env:{varName}[...] char indexing resolved to: '{Truncate(result, 40)}'");
+                }
+            }
+        }
+        catch { }
+    }
+
+    // ── Technique 20: Backtick deobfuscation ────────────────────────────────
+
+    /// Detects PowerShell backtick obfuscation: `Am`si`Utils → AmsiUtils.
+    private void ScanBacktickObfuscation(string source)
+    {
+        try
+        {
+            foreach (Match m in Regex.Matches(source, @"[\w`\-\.]*`[\w`\-\.]*"))
+            {
+                var stripped = m.Value.Replace("`", "");
+                if (stripped.Length < 3) continue;
+                CheckValue(stripped, "backtick-stripped token");
+                foreach (var (pattern, type, severity, desc) in RawSourceIndicators)
+                    if (stripped.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                        FlagApi(pattern, type, severity, desc);
+                foreach (var api in MemoryPatchApis)
+                    if (stripped.Contains(api, StringComparison.OrdinalIgnoreCase))
+                        FlagApi(api, "MemoryPatch", "High", $"{api} call detected via backtick obfuscation");
+            }
+        }
+        catch { }
+    }
+
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..max] + "...";
+
+    /// Returns a JSON-safe preview of a matched value. For binary blobs (decoded
+    /// PE files, native code etc.) returns a summary instead of garbage.
+    private static string SafeMatchPreview(string raw, int max = 60)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+
+        // Heuristic: legitimate text never contains NUL bytes. PEs and native code do.
+        // Also, if even one in 20 of the first 200 chars is control-non-whitespace -> binary.
+        int sample = Math.Min(200, raw.Length);
+        int suspicious = 0;
+        for (int i = 0; i < sample; i++)
+        {
+            var c = raw[i];
+            if (c == '\0') return $"[binary content, {raw.Length} bytes, PE magic={(raw.Length >= 2 && raw[0]=='M' && raw[1]=='Z' ? "MZ (Windows EXE/DLL)" : "unknown")}]";
+            if (c < 0x20 && c != '\n' && c != '\r' && c != '\t') suspicious++;
+        }
+        if (suspicious > sample / 10) return $"[binary content, {raw.Length} bytes]";
+
+        // Text path -- preview first max chars, replacing whitespace
+        var sb = new StringBuilder(Math.Min(max, raw.Length));
+        foreach (var c in raw)
+        {
+            if (c >= 0x20 && c <= 0x7E) sb.Append(c);
+            else if (c == '\n' || c == '\r' || c == '\t') sb.Append(' ');
+            else sb.Append('?');
+            if (sb.Length >= max) break;
+        }
+        if (raw.Length > max) sb.Append("...");
+        return sb.ToString();
+    }
 
     /// Flags a generic obfuscation indicator (non-AMSI specific) — deduped by key.
     private void FlagObfuscation(string value, string type, string severity, string description)
@@ -806,7 +1015,7 @@ public class AmsiBypassDetector : IAstVisitor
                 Type         = type,
                 Severity     = severity,
                 Description  = description,
-                MatchedValue = value.Length > 100 ? value[..100] + "..." : value
+                MatchedValue = SafeMatchPreview(value)
             });
     }
 
@@ -825,7 +1034,7 @@ public class AmsiBypassDetector : IAstVisitor
                     Type         = techniqueType,
                     Severity     = "Medium",
                     Description  = $"Obfuscated content decoded via {techniqueType}: '{Truncate(value, 60)}'",
-                    MatchedValue = value.Length > 100 ? value[..100] + "..." : value
+                    MatchedValue = SafeMatchPreview(value)
                 });
         }
     }
@@ -865,7 +1074,7 @@ public class AmsiBypassDetector : IAstVisitor
                     Type        = type,
                     Severity    = severity,
                     Description = $"'{pattern}' detected in {context}",
-                    MatchedValue = value.Length > 100 ? value[..100] + "..." : value
+                    MatchedValue = SafeMatchPreview(value)
                 });
             }
         }
@@ -990,7 +1199,12 @@ public class AmsiBypassReport
     private static readonly JsonSerializerOptions s_compact  = new() { WriteIndented = false };
 
     [JsonPropertyName("is_amsi_bypass")]
-    public bool IsAmsiBypass => Indicators.Any(i => i.Severity == "Critical");
+    public bool IsAmsiBypass =>
+        Indicators.Any(i => i.Severity == "Critical") ||
+        (ConfidenceScore >= 60 && Indicators.Any(i =>
+            i.Type is "ReflectionBypass" or "MemoryPatch" or "AmsiDllHijack"
+                   or "ScriptBlockSmuggling" or "HardwareBreakpoint"
+                   or "PSv2Downgrade" or "AddTypeInjection" or "EtwBypass" or "WldpBypass"));
 
     [JsonPropertyName("confidence_score")]
     public int ConfidenceScore { get; private set; }
@@ -1001,13 +1215,38 @@ public class AmsiBypassReport
     public void AddIndicator(AmsiIndicator ind)
     {
         Indicators.Add(ind);
-        ConfidenceScore = Math.Min(100, Indicators.Sum(i => i.Severity switch
+        RecalculateScore();
+    }
+
+    private void RecalculateScore()
+    {
+        int baseScore = Indicators.Sum(i => i.Severity switch
         {
             "Critical" => 40,
             "High"     => 20,
             "Medium"   => 10,
-            _          => 5
-        }));
+            _          =>  5
+        });
+
+        var types = new HashSet<string>(Indicators.Select(i => i.Type), StringComparer.OrdinalIgnoreCase);
+
+        if (types.Contains("ReflectionBypass") && types.Contains("MemoryPatch"))
+            baseScore += 20;
+        if (types.Contains("MemoryPatch") && types.Contains("AmsiDll"))
+            baseScore += 15;
+        if (types.Contains("LoggingBypass") && types.Contains("ReflectionBypass"))
+            baseScore += 15;
+        if (types.Contains("ScriptBlockSmuggling") && types.Contains("ReflectionBypass"))
+            baseScore += 20;
+
+        var amsiSpecific = new[] { "ReflectionBypass", "MemoryPatch", "AmsiDll", "AmsiDllHijack",
+                                   "ScriptBlockSmuggling", "HardwareBreakpoint", "PSv2Downgrade",
+                                   "AddTypeInjection", "EtwBypass", "WldpBypass" };
+        bool hasAmsiSpecific = types.Overlaps(amsiSpecific);
+        if (!hasAmsiSpecific && baseScore > 30)
+            baseScore = (int)(baseScore * 0.6);
+
+        ConfidenceScore = Math.Min(100, Math.Max(0, baseScore));
     }
 
     public string ToJson(bool indented = true) =>
@@ -1019,6 +1258,8 @@ public class AmsiBypassReport
         sb.AppendLine($"AMSI Bypass: {(IsAmsiBypass ? "*** DETECTED ***" : "Not detected")}");
         sb.AppendLine($"Confidence : {ConfidenceScore}/100");
         sb.AppendLine($"Indicators : {Indicators.Count}");
+        var types = Indicators.Select(i => i.Type).Distinct().OrderBy(t => t);
+        sb.AppendLine($"Types      : {string.Join(", ", types)}");
         foreach (var i in Indicators)
             sb.AppendLine($"  [{i.Severity}] {i.Type}: {i.Description}");
         return sb.ToString();

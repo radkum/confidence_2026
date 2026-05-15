@@ -883,7 +883,7 @@ txbox(s, "Q&A", 0, 6.3, 13.33, 1.2, size=34, bold=True,
 
 
 # ── Save ─────────────────────────────────────────────────────────────────────
-out = r"C:\VSExclude\confidence\AMSI_vs_Obfuscation.pptx"
+out = r"C:\VSExclude\confidence_2026\AMSI_vs_Obfuscation.pptx"
 prs.save(out)
 print(f"Saved: {out}")
 print(f"Slides: {len(prs.slides)}")

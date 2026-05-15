@@ -302,27 +302,371 @@ public class ObfuscationDetector : IAstVisitor
 {
     public ObfuscationReport Report { get; private set; } = new();
 
+    // Constant propagation: $var → known literal value (populated by VisitAssignmentStatement)
+    private readonly Dictionary<string, string> _variables = new(StringComparer.OrdinalIgnoreCase);
+
+    // Deduplication key set for indicators added during AST walk
+    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+
+    // ── obfuscation keyword sets ─────────────────────────────────────────────
+
+    private static readonly string[] SuspiciousFunctions =
+        { "Invoke-Expression", "IEX", "Invoke-WebRequest", "iwr", "New-Object",
+          "Invoke-Command", "Start-Process", "DownloadString", "DownloadFile",
+          "EncodedCommand", "FromBase64String", "GetMethod", "Invoke" };
+
+    // ── raw source scan ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Scans raw PowerShell source for obfuscation patterns independently of the parser.
+    /// Should be called before or after AST traversal.
+    /// </summary>
+    public void ScanSource(string source)
+    {
+        if (string.IsNullOrEmpty(source)) return;
+
+        ScanBase64Blobs(source);
+        ScanCharCasts(source);
+        ScanXorPatterns(source);
+        ScanUnicodeEscapes(source);
+        ScanReversedStrings(source);
+        ScanFormatOperator(source);
+        ScanReplaceChains(source);
+        ScanExcessiveConcatenation(source);
+        ScanSuspiciousFunctionCalls(source);
+    }
+
+    // ── raw scan helpers ─────────────────────────────────────────────────────
+
+    private void ScanBase64Blobs(string source)
+    {
+        try
+        {
+            // Find base64 blobs of at least 20 chars that can be decoded to readable text
+            foreach (Match m in Regex.Matches(source, @"[A-Za-z0-9+/]{20,}={0,2}"))
+            {
+                var decoded = TryBase64Decode(m.Value);
+                if (decoded != null)
+                    FlagOnce("Base64Encoding", "High",
+                        $"Base64-encoded content detected: '{Truncate(m.Value, 40)}' → '{Truncate(decoded, 40)}'",
+                        $"Base64Encoding:{m.Value[..Math.Min(20, m.Value.Length)].ToLowerInvariant()}");
+            }
+
+            // Explicit FromBase64String("...") calls
+            foreach (Match m in Regex.Matches(source,
+                @"FromBase64String\s*\(\s*""([^""]+)""\s*\)", RegexOptions.IgnoreCase))
+            {
+                var decoded = TryBase64Decode(m.Groups[1].Value);
+                FlagOnce("Base64Encoding", "High",
+                    $"FromBase64String call with literal argument: '{Truncate(m.Groups[1].Value, 40)}'",
+                    $"Base64Encoding:fromb64:{m.Groups[1].Value[..Math.Min(20, m.Groups[1].Value.Length)].ToLowerInvariant()}");
+            }
+        }
+        catch { }
+    }
+
+    private void ScanCharCasts(string source)
+    {
+        try
+        {
+            // Sequences of adjacent [char]N / [char]0xNN joined by + or ,
+            var singleMatches = Regex.Matches(source,
+                @"\[char\]\s*(?:0x[0-9a-fA-F]+|\d+)", RegexOptions.IgnoreCase);
+
+            if (singleMatches.Count > 0)
+            {
+                var sb = new StringBuilder();
+                int prevEnd = -1;
+                int count = 0;
+
+                foreach (Match m in singleMatches)
+                {
+                    if (prevEnd >= 0)
+                    {
+                        var gap = source[prevEnd..m.Index];
+                        if (!Regex.IsMatch(gap, @"^[\s+,]*$"))
+                        {
+                            if (sb.Length >= 3)
+                            {
+                                FlagOnce("CharCastObfuscation", "High",
+                                    $"[char] cast sequence ({count} chars) decoded: '{Truncate(sb.ToString(), 60)}'",
+                                    $"CharCast:{sb.ToString().ToLowerInvariant()[..Math.Min(30, sb.Length)]}");
+                            }
+                            sb.Clear();
+                            count = 0;
+                        }
+                    }
+                    var ch = StringEvaluator.TryEvalCharCast(m.Value);
+                    if (ch != null) { sb.Append(ch); count++; }
+                    prevEnd = m.Index + m.Length;
+                }
+
+                if (sb.Length >= 3)
+                    FlagOnce("CharCastObfuscation", "High",
+                        $"[char] cast sequence ({count} chars) decoded: '{Truncate(sb.ToString(), 60)}'",
+                        $"CharCast:{sb.ToString().ToLowerInvariant()[..Math.Min(30, sb.Length)]}");
+            }
+
+            // [char[]] array expressions
+            foreach (Match m in Regex.Matches(source,
+                @"(?:-join\s*\(?\s*)?\[char\[\]\]\s*@?\s*\([^)]+\)(?:\s*\))?(?:\s*-join\s*(?:''|""\s*""))?",
+                RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalCharArray(m.Value);
+                if (decoded != null && decoded.Length >= 2)
+                    FlagOnce("CharArrayObfuscation", "High",
+                        $"[char[]] array expression decoded: '{Truncate(decoded, 60)}'",
+                        $"CharArray:{decoded.ToLowerInvariant()[..Math.Min(30, decoded.Length)]}");
+            }
+        }
+        catch { }
+    }
+
+    private void ScanXorPatterns(string source)
+    {
+        try
+        {
+            // Inline: @(bytes) and -bxor key in same expression
+            foreach (Match m in Regex.Matches(source,
+                @"@\s*\([0-9a-fA-F\s,x]+\)[^;\r\n]{0,120}-bxor\s*(?:0x[0-9a-fA-F]+|\d+)",
+                RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalXor(m.Value);
+                if (decoded != null)
+                    FlagOnce("XorObfuscation", "High",
+                        $"XOR-decoded byte array: '{Truncate(decoded, 60)}'",
+                        $"XorObf:{decoded.ToLowerInvariant()[..Math.Min(30, decoded.Length)]}");
+            }
+
+            // Cross-product: collect all byte arrays and keys in source
+            var byteArrays = new List<byte[]>();
+            foreach (Match m in Regex.Matches(source,
+                @"@\s*\(((?:\s*(?:0x[0-9a-fA-F]+|\d+)\s*,?\s*)+)\)", RegexOptions.IgnoreCase))
+            {
+                var arr = ParseByteList(m.Groups[1].Value);
+                if (arr != null && arr.Length >= 4)
+                    byteArrays.Add(arr);
+            }
+
+            var xorKeys = new List<int>();
+            foreach (Match m in Regex.Matches(source,
+                @"-bxor\s*(?:0x([0-9a-fA-F]+)|(\d+))", RegexOptions.IgnoreCase))
+            {
+                int key = m.Groups[1].Success
+                    ? Convert.ToInt32(m.Groups[1].Value, 16)
+                    : int.Parse(m.Groups[2].Value);
+                if (!xorKeys.Contains(key))
+                    xorKeys.Add(key);
+            }
+
+            foreach (var arr in byteArrays)
+            {
+                foreach (var key in xorKeys)
+                {
+                    var sb = new StringBuilder();
+                    foreach (var b in arr) sb.Append((char)(b ^ key));
+                    var result = sb.ToString();
+                    int printable = result.Count(c => c >= 0x20 && c <= 0x7E);
+                    if (result.Length == 0 || (double)printable / result.Length < 0.8) continue;
+
+                    FlagOnce("XorObfuscation", "High",
+                        $"XOR-decoded byte array (key=0x{key:X2}): '{Truncate(result, 60)}'",
+                        $"XorObf:{result.ToLowerInvariant()[..Math.Min(30, result.Length)]}");
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void ScanUnicodeEscapes(string source)
+    {
+        try
+        {
+            if (!Regex.IsMatch(source, @"`u\{[0-9a-fA-F]+\}", RegexOptions.IgnoreCase))
+                return;
+
+            FlagOnce("UnicodeEscapeObfuscation", "Medium",
+                "PowerShell `u{NNNN} unicode escape sequences detected",
+                "UnicodeEscape:present");
+
+            // Decode sequences and check content
+            foreach (Match m in Regex.Matches(source,
+                @"(?:`u\{[0-9a-fA-F]+\})+", RegexOptions.IgnoreCase))
+            {
+                var decoded = StringEvaluator.TryEvalUnicodeEscape(m.Value);
+                if (decoded != null && decoded.Length >= 2)
+                    FlagOnce("UnicodeEscapeObfuscation", "Medium",
+                        $"Unicode escape sequence decoded: '{Truncate(decoded, 60)}'",
+                        $"UnicodeEscape:{decoded.ToLowerInvariant()[..Math.Min(30, decoded.Length)]}");
+            }
+        }
+        catch { }
+    }
+
+    private void ScanReversedStrings(string source)
+    {
+        try
+        {
+            var suspiciousKeywords = new[]
+            {
+                "invoke", "iex", "bypass", "payload", "shellcode",
+                "loadlibrary", "virtualprotect", "writeprocessmemory",
+                "reflection", "assembly", "scriptblock", "amsi", "download"
+            };
+
+            // "string"[-1..-N] -join '' pattern
+            foreach (Match m in Regex.Matches(source,
+                @"""([^""\r\n]{6,})""\s*\[-1\s*\.\.-\s*\d+\]", RegexOptions.IgnoreCase))
+            {
+                var reversed = new string(m.Groups[1].Value.Reverse().ToArray());
+                if (suspiciousKeywords.Any(k => reversed.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                    FlagOnce("ReversedStringObfuscation", "Medium",
+                        $"Reversed string slice detected, decoded: '{Truncate(reversed, 60)}'",
+                        $"RevStr:{reversed.ToLowerInvariant()[..Math.Min(30, reversed.Length)]}");
+            }
+
+            // Bare quoted strings that reverse to something suspicious
+            foreach (Match m in Regex.Matches(source, @"""([^""\r\n]{8,})"""))
+            {
+                var reversed = new string(m.Groups[1].Value.Reverse().ToArray());
+                if (suspiciousKeywords.Any(k => reversed.Contains(k, StringComparison.OrdinalIgnoreCase)))
+                    FlagOnce("ReversedStringObfuscation", "Medium",
+                        $"Reversed string detected, decoded: '{Truncate(reversed, 60)}'",
+                        $"RevStr:{reversed.ToLowerInvariant()[..Math.Min(30, reversed.Length)]}");
+            }
+        }
+        catch { }
+    }
+
+    private void ScanFormatOperator(string source)
+    {
+        try
+        {
+            // PowerShell -f format operator: "{0}{1}" -f 'foo','bar' → 'foobar'
+            // Flag when result contains suspicious content or when format args are split to avoid detection
+            var fmtMatches = Regex.Matches(source,
+                @"""[^""\r\n]*\{\d+\}[^""\r\n]*""\s*-[fF]\s*", RegexOptions.IgnoreCase);
+            if (fmtMatches.Count > 0)
+                FlagOnce("FormatOperatorObfuscation", "Medium",
+                    $"PowerShell -f format operator used {fmtMatches.Count} time(s) — possible string reconstruction",
+                    "FmtOp:present");
+        }
+        catch { }
+    }
+
+    private void ScanReplaceChains(string source)
+    {
+        try
+        {
+            // Multiple chained .replace() calls on same variable → string building obfuscation
+            var replaceMatches = Regex.Matches(source,
+                @"\$\w+\s*=\s*\$\w+\s*\.\s*replace\s*\(", RegexOptions.IgnoreCase);
+            if (replaceMatches.Count >= 2)
+                FlagOnce("ReplaceChainObfuscation", "Medium",
+                    $"Chained .replace() operations ({replaceMatches.Count}) detected — possible string-building obfuscation",
+                    "ReplaceChain:present");
+        }
+        catch { }
+    }
+
+    private void ScanExcessiveConcatenation(string source)
+    {
+        try
+        {
+            // Count string concatenation operations (quoted literal + quoted literal)
+            int concatCount = Regex.Matches(source,
+                @"(?:'[^']*'|""[^""]*"")\s*\+\s*(?:'[^']*'|""[^""]*)").Count;
+            if (concatCount >= 5)
+                FlagOnce("ExcessiveConcatenation", "Medium",
+                    $"Excessive string concatenation detected ({concatCount} literal + literal operations)",
+                    "ExcessConcat:present");
+        }
+        catch { }
+    }
+
+    private void ScanSuspiciousFunctionCalls(string source)
+    {
+        try
+        {
+            foreach (var fn in SuspiciousFunctions)
+            {
+                if (Regex.IsMatch(source, @"\b" + Regex.Escape(fn) + @"\b", RegexOptions.IgnoreCase))
+                    FlagOnce("SuspiciousFunction", "High",
+                        $"Suspicious function/command reference: {fn}",
+                        $"SuspFn:{fn.ToLowerInvariant()}");
+            }
+        }
+        catch { }
+    }
+
+    // ── indicator helpers ────────────────────────────────────────────────────
+
+    private void FlagOnce(string type, string severity, string description, string dedupeKey)
+    {
+        if (_seen.Add(dedupeKey))
+            Report.AddIndicator(new ObfuscationIndicator
+            {
+                Type        = type,
+                Severity    = severity,
+                Description = description
+            });
+    }
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "...";
+
+    private static string? TryBase64Decode(string s)
+    {
+        try
+        {
+            if (s.Length % 4 != 0) return null;
+            if (!Regex.IsMatch(s, @"^[A-Za-z0-9+/]*={0,2}$")) return null;
+            var bytes   = Convert.FromBase64String(s);
+            var decoded = Encoding.UTF8.GetString(bytes);
+            // Reject if too many non-printable chars (binary data)
+            int printable = decoded.Count(c => c >= 0x20 || c == '\n' || c == '\r' || c == '\t');
+            if (decoded.Length == 0 || (double)printable / decoded.Length < 0.8) return null;
+            return decoded;
+        }
+        catch { return null; }
+    }
+
+    private static byte[]? ParseByteList(string list)
+    {
+        try
+        {
+            var parts = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var result = new List<byte>();
+            foreach (var p in parts)
+            {
+                int v = p.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.ToInt32(p, 16)
+                    : int.Parse(p);
+                if (v < 0 || v > 255) return null;
+                result.Add((byte)v);
+            }
+            return result.Count > 0 ? [.. result] : null;
+        }
+        catch { return null; }
+    }
+
+    // ── IAstVisitor ──────────────────────────────────────────────────────────
+
     public void VisitStringLiteral(StringLiteral node)
     {
         if (!node.IsExpandable)
             return;
 
-        // Check for Base64
+        // Check each interpolation segment for base64-encoded variable content
         foreach (var segment in node.InterpolationSegments)
         {
             if (segment.Type == "variable")
             {
-                var evaluator = new StringEvaluator();
-                string decoded = evaluator.TryDecodeBase64(segment.Content);
+                var decoded = TryBase64Decode(segment.Content);
                 if (decoded != null)
-                {
-                    Report.AddIndicator(new ObfuscationIndicator
-                    {
-                        Type = "Base64Encoding",
-                        Severity = "High",
-                        Description = $"Base64 encoded content detected in string interpolation: {segment.Content[..Math.Min(20, segment.Content.Length)]}..."
-                    });
-                }
+                    FlagOnce("Base64Encoding", "High",
+                        $"Base64-encoded content in string interpolation: ${segment.Content}",
+                        $"Base64Encoding:{segment.Content.ToLowerInvariant()[..Math.Min(20, segment.Content.Length)]}");
             }
         }
     }
@@ -335,49 +679,50 @@ public class ObfuscationDetector : IAstVisitor
 
     public void VisitBinaryExpression(BinaryExpression node)
     {
-        // String concatenation can be obfuscation
         if (node.Operator == "+")
         {
-            Report.AddIndicator(new ObfuscationIndicator
+            // Use StringFolder for constant propagation — only flag if we can fold
+            // the whole expression to a non-trivial string built from 3+ parts,
+            // which is a strong signal of string-splitting obfuscation.
+            var folded = StringFolder.TryFold(node, _variables);
+            if (folded != null)
             {
-                Type = "StringConcatenation",
-                Severity = "Medium",
-                Description = "String concatenation detected - possible obfuscation technique"
-            });
+                // Count how many literal/variable leaf nodes contributed
+                int parts = CountConcatParts(node);
+                if (parts >= 3)
+                    FlagOnce("StringConcatenation", "Medium",
+                        $"String built from {parts} concatenated parts: '{Truncate(folded, 60)}'",
+                        $"StrConcat:{folded.ToLowerInvariant()[..Math.Min(40, folded.Length)]}");
+            }
         }
 
         node.Left?.Accept(this);
         node.Right?.Accept(this);
     }
 
+    /// Counts the number of leaf (non-plus) nodes in a chain of + BinaryExpressions.
+    private static int CountConcatParts(Expression? expr)
+    {
+        if (expr is BinaryExpression { Operator: "+" } bin)
+            return CountConcatParts(bin.Left) + CountConcatParts(bin.Right);
+        return 1;
+    }
+
     public void VisitFunctionCall(FunctionCall node)
     {
-        // Check for suspicious functions
-        var suspiciousFunctions = new[] { "Invoke-Expression", "IEX", "Invoke-WebRequest", "iwr", "New-Object" };
+        if (SuspiciousFunctions.Contains(node.FunctionName, StringComparer.OrdinalIgnoreCase))
+            FlagOnce("SuspiciousFunction", "High",
+                $"Suspicious function call: {node.FunctionName}",
+                $"SuspFn:{node.FunctionName.ToLowerInvariant()}");
 
-        if (suspiciousFunctions.Contains(node.FunctionName, StringComparer.OrdinalIgnoreCase))
-        {
-            Report.AddIndicator(new ObfuscationIndicator
-            {
-                Type = "SuspiciousFunction",
-                Severity = "High",
-                Description = $"Suspicious function call: {node.FunctionName}"
-            });
-        }
-
-        // Recursively check arguments
         foreach (var arg in node.Arguments)
-        {
             arg?.Accept(this);
-        }
     }
 
     public void VisitPipelineExpression(PipelineExpression node)
     {
         foreach (var segment in node.Segments)
-        {
             segment?.Accept(this);
-        }
     }
 
     public void VisitExpressionStatement(ExpressionStatement node)
@@ -387,6 +732,11 @@ public class ObfuscationDetector : IAstVisitor
 
     public void VisitAssignmentStatement(AssignmentStatement node)
     {
+        // Constant propagation: record literal assignments for later folding
+        var val = StringFolder.TryFold(node.Value, _variables);
+        if (val != null)
+            _variables[node.VariableName] = val;
+
         node.Value?.Accept(this);
     }
 

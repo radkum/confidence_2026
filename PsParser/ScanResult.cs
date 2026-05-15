@@ -8,8 +8,16 @@ namespace PSParser;
 /// </summary>
 public class ScanResult
 {
-    private static readonly JsonSerializerOptions s_indented = new() { WriteIndented = true  };
-    private static readonly JsonSerializerOptions s_compact  = new() { WriteIndented = false };
+    private static readonly JsonSerializerOptions s_indented = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+    private static readonly JsonSerializerOptions s_compact = new()
+    {
+        WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     [JsonPropertyName("file")]
     public string File { get; init; } = "";
@@ -29,6 +37,15 @@ public class ScanResult
     [JsonPropertyName("csharp")]
     public CSharpScanResult? CSharp { get; init; }
 
+    [JsonPropertyName("ml")]
+    public MlScore? Ml { get; init; }
+
+    /// <summary>
+    /// Serializes to JSON.
+    /// Uses reflection-based serialization for regular builds.
+    /// For NativeAOT publish, use AppJsonContext.Default.ScanResult instead:
+    ///   JsonSerializer.Serialize(this, AppJsonContext.Default.ScanResult)
+    /// </summary>
     public string ToJson(bool indented = true) =>
         JsonSerializer.Serialize(this, indented ? s_indented : s_compact);
 }

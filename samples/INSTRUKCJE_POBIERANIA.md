@@ -144,5 +144,5 @@ samples/
 
 ```powershell
 # Dodanie wyjątku dla folderu samples (jako admin)
-Add-MpPreference -ExclusionPath "c:\VSExclude\confidence\samples"
+Add-MpPreference -ExclusionPath "c:\VSExclude\confidence_2026\samples"
 ```

@@ -1,12 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- Normal build: Exe; NativeAOT shared lib build: Library -->
+    <OutputType Condition="'$(NativeLib)' != 'Shared'">Exe</OutputType>
+    <OutputType Condition="'$(NativeLib)' == 'Shared'">Library</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
   </PropertyGroup>
+
+  <!-- Exclude CLI entry point when building as native shared library -->
+  <ItemGroup Condition="'$(NativeLib)' == 'Shared'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+
+  <!-- To build native DLL for Rust FFI:
+       dotnet publish -r win-x64 -c Release -p:PublishAot=true -p:NativeLib=Shared -o publish
+       Output: publish/PSParser.dll (no .NET runtime required)
+  -->
 
   <ItemGroup>
     <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />

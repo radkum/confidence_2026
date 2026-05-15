@@ -112,10 +112,10 @@ class Program
             }
             else
             {
-                // Single file → one compact JSON object per line (newline-delimited JSON).
+                // Single file → one pretty-printed JSON object (readable on terminal).
                 try
                 {
-                    Console.WriteLine(BuildScanResult(files[0]).ToJson(indented: false));
+                    Console.WriteLine(BuildScanResult(files[0]).ToJson(indented: true));
                 }
                 catch (Exception ex)
                 {
@@ -177,7 +177,11 @@ class Program
         }
     }
 
-    private static readonly JsonSerializerOptions s_jsonIndented = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions s_jsonIndented = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     static ScanResult BuildScanResult(string file)
     {
@@ -201,6 +205,12 @@ class Program
         var csResult = CSharpDetector.Scan(source);
         bool csCritical = csResult.Indicators.Any(i => i.Severity == "Critical");
 
+        // Online ML layer: extract features, compute score, blend with rules
+        // based on accumulated training samples (confidence ramp-up).
+        var features = FeatureExtractor.Extract(source);
+        var mlScore  = MlScorer.Score(features, amsiReport.ConfidenceScore);
+        var blended  = MlScorer.BlendedConfidence(amsiReport.ConfidenceScore, mlScore);
+
         var status = (amsiReport.IsAmsiBypass || csCritical) ? "AMSI BYPASS"
                    : (amsiReport.Indicators.Count > 0 || csResult.Indicators.Count > 0) ? "Suspicious"
                    : "Clean";
@@ -209,10 +219,11 @@ class Program
         {
             File        = Path.GetFileName(file),
             Status      = status,
-            Confidence  = amsiReport.ConfidenceScore,
+            Confidence  = blended,
             Obfuscation = obfReport,
             AmsiBypass  = amsiReport,
             CSharp      = csResult,
+            Ml          = mlScore,
         };
     }
 

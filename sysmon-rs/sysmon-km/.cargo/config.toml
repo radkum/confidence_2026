@@ -1,0 +1,6 @@
+# Kernel driver linker flags moved to build.rs (rustc-cdylib-link-arg).
+# rustflags here would apply to build scripts of dependencies too -- which
+# break because build scripts are ordinary user-mode binaries and need
+# default libs / standard subsystem.
+#
+# See: sysmon-km/build.rs
