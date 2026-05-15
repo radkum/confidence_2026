@@ -1,19 +1,29 @@
-//! Detection over ps-parser tokens.
+//! AMSI-bypass detector backed by ps-parser.
 //!
-//! `scan_source` is the single entry point: it runs ps-parser, harvests
-//! the lowercased token sets, matches them against the keyword tables in
-//! `keywords`, and assembles a `ScanResult` that mirrors the JSON schema
-//! produced by `PsParser.exe --json` (where the fields overlap).
+//! Strategy:
+//!   1. Run the script through ps-parser. The crate evaluates `+`
+//!      concatenations, format operator (`-f`), char casts, the
+//!      `[Convert]::FromBase64String` pipeline, etc. and emits the
+//!      `deobfuscated()` reconstruction along with structured token sets
+//!      (strings, types, methods).
+//!   2. Build a single lowercased haystack from `raw_source` and
+//!      `deobfuscated`; substring-match it against the pattern tables in
+//!      `patterns`.
+//!   3. Second pass over ps-parser's token sets to catch tokens whose
+//!      surface form was reconstructed by the parser and never appeared
+//!      in the raw source.
+//!   4. Combo bonuses (amsi.dll + VirtualProtect, Add-Type + amsi.dll, ...)
+//!      and scoring follow the algorithm in PsParser's
+//!      `AmsiBypassReport.RecalculateScore`.
+
+use std::collections::{BTreeSet, HashSet};
 
 use ps_parser::{PowerShellSession, Token, Variables};
 use serde::Serialize;
-use std::collections::BTreeSet;
 
-use crate::keywords::*;
+use crate::deob;
+use crate::patterns::*;
 
-/// Top-level JSON envelope. Field names match `PsParser.exe --json` output
-/// for the fields we populate; we add `engine` and `deobfuscated` because
-/// they are uniquely produced by this CLI.
 #[derive(Serialize)]
 pub struct ScanResult {
     pub file: String,
@@ -41,146 +51,240 @@ pub struct Indicator {
 }
 
 pub fn scan_source(file: &str, source: &str) -> ScanResult {
+    // ── 1. ps-parser pass (best effort) ──────────────────────────────────
     let mut session = PowerShellSession::new().with_variables(Variables::env());
 
-    let (string_set, commands_and_methods, ttypes, deobfuscated, parse_errors, ps_v2) =
+    let (string_set, methods_lower, types_lower, mut deobfuscated, parse_errors) =
         match session.parse_script(source) {
-            Ok(script_result) => {
-                let tokens = script_result.tokens();
-                let strings: BTreeSet<String> = tokens.lowercased_string_set().into_iter().collect();
-                let methods: BTreeSet<String> = tokens
+            Ok(sr) => {
+                let toks = sr.tokens();
+                let s: BTreeSet<String> = toks.lowercased_string_set().into_iter().collect();
+                let m: BTreeSet<String> = toks
                     .methods_and_commands()
                     .iter()
                     .map(|s| s.to_ascii_lowercase())
                     .collect();
-                let types: BTreeSet<String> = tokens
+                let t: BTreeSet<String> = toks
                     .ttypes()
                     .iter()
                     .map(|s| s.to_ascii_lowercase())
                     .collect();
-                let all_tokens = tokens.all();
-                let ps_v2 = detect_psv2(&all_tokens);
-                let errors: Vec<String> =
-                    script_result.errors().iter().map(|e| e.to_string()).collect();
-
-                let mut deob = script_result.deobfuscated();
-                if deob.len() > 4000 {
-                    deob.truncate(4000);
-                    deob.push_str("\n...[truncated]");
+                let mut d = sr.deobfuscated();
+                if d.len() > 4000 {
+                    d.truncate(4000);
+                    d.push_str("\n...[truncated]");
                 }
-
-                (strings, methods, types, deob, errors, ps_v2)
+                let errs: Vec<String> = sr.errors().iter().map(|e| e.to_string()).collect();
+                (s, m, t, d, errs)
             },
-            Err(err) => {
-                // Parser refused the file entirely. Fall back to a raw lowercased
-                // substring scan so we still surface obvious literal IoCs.
-                let lower = source.to_ascii_lowercase();
-                let mut strings = BTreeSet::new();
-                for tok in lower
-                    .split(|c: char| !c.is_alphanumeric() && c != '.' && c != '-' && c != '\\')
-                    .filter(|s| !s.is_empty())
-                {
-                    strings.insert(tok.to_string());
-                }
-                (
-                    strings,
-                    BTreeSet::new(),
-                    BTreeSet::new(),
-                    String::new(),
-                    vec![format!("parse failed: {err}")],
-                    false,
-                )
-            },
+            Err(err) => (
+                BTreeSet::new(),
+                BTreeSet::new(),
+                BTreeSet::new(),
+                String::new(),
+                vec![format!("parse failed: {err}")],
+            ),
         };
 
+    let psv2_via_tokens = match session.parse_script(source) {
+        Ok(sr) => detect_psv2(&sr.tokens().all()),
+        Err(_) => false,
+    };
+
+    // ── 2. Haystack: raw source + deobfuscated text, both lowercased ─────
+    let raw_lower = source.to_ascii_lowercase();
+    if deobfuscated.is_empty() {
+        // Parser refused -- deob is empty; still keep field non-null in JSON.
+        deobfuscated = String::new();
+    }
+    let deob_lower = deobfuscated.to_ascii_lowercase();
+
+    // ── Recursive base64 deobfuscation: catches .NET DLL payloads embedded
+    //    via [Reflection.Assembly]::Load([Convert]::FromBase64String("...")) ─
+    let mut b64_haystack = String::new();
+    deob::scan_recursive(source, |decoded| {
+        b64_haystack.push_str(decoded);
+        b64_haystack.push('\n');
+    });
+    let b64_lower = b64_haystack.to_ascii_lowercase();
+
+    let contains_any = |needle: &str| {
+        raw_lower.contains(needle) || deob_lower.contains(needle) || b64_lower.contains(needle)
+    };
+
     let mut indicators: Vec<Indicator> = Vec::new();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut seen: HashSet<String> = HashSet::new();
 
-    // ── Critical: AMSI-bypass keyword anywhere in deobfuscated strings ──
-    for kw in BLACKLIST_KEYWORDS {
-        if string_set.iter().any(|s| s.contains(kw))
-            && seen.insert(format!("kw:{kw}"))
+    // ── 3. Pattern tables (Critical / High / Medium) ─────────────────────
+    let push_pattern = |inds: &mut Vec<Indicator>,
+                        seen: &mut HashSet<String>,
+                        p: &Pattern,
+                        suffix: &str| {
+        let key = format!("{}:{}", p.kind, p.needle);
+        if seen.insert(key) {
+            inds.push(Indicator {
+                kind: p.kind.into(),
+                severity: p.severity,
+                description: if suffix.is_empty() {
+                    p.description.into()
+                } else {
+                    format!("{} ({suffix})", p.description)
+                },
+            });
+        }
+    };
+
+    for p in STRING_INDICATORS {
+        if contains_any(p.needle)
+            || string_set.iter().any(|s| s.contains(p.needle))
         {
-            indicators.push(Indicator {
-                kind: "BlacklistedKeyword".into(),
-                severity: "Critical",
-                description: format!("AMSI-bypass keyword recovered: '{kw}'"),
-            });
+            push_pattern(&mut indicators, &mut seen, p, "");
         }
     }
 
-    // ── Critical: token endswith a blacklisted suffix (e.g. emsi.dll → amsi.dll) ──
-    for suffix in BLACKLIST_KEYWORDS_ENDSWITH {
-        if string_set.iter().any(|s| s.ends_with(suffix))
-            && seen.insert(format!("suffix:{suffix}"))
+    for p in RAW_SOURCE_INDICATORS {
+        if contains_any(p.needle)
+            || string_set.iter().any(|s| s.contains(p.needle))
+            || methods_lower.iter().any(|s| s.contains(p.needle))
+            || types_lower.iter().any(|s| s.contains(p.needle))
         {
-            indicators.push(Indicator {
-                kind: "BlacklistedSuffix".into(),
-                severity: "Critical",
-                description: format!("Token ending in '{suffix}' detected"),
-            });
+            push_pattern(&mut indicators, &mut seen, p, "");
         }
     }
 
-    // ── Critical: AMSI-bypass function ──
-    for fn_name in BLACKLIST_FUNCTIONS {
-        if commands_and_methods.iter().any(|s| s.contains(fn_name))
-            && seen.insert(format!("fn:{fn_name}"))
-        {
-            indicators.push(Indicator {
-                kind: "BlacklistedFunction".into(),
-                severity: "Critical",
-                description: format!("Suspicious function reference: '{fn_name}'"),
-            });
+    for api in MEMORY_PATCH_APIS {
+        if contains_any(api) {
+            let key = format!("MemoryPatch:{api}");
+            if seen.insert(key) {
+                indicators.push(Indicator {
+                    kind: "MemoryPatch".into(),
+                    severity: "High",
+                    description: format!("{api} call detected -- possible memory-patching bypass"),
+                });
+            }
         }
     }
 
-    // ── High: telemetry types (Reflection.Assembly etc.) ──
-    for ty in TELEMETRY_TYPES {
-        if ttypes.iter().any(|s| s.contains(ty)) && seen.insert(format!("ty:{ty}")) {
-            indicators.push(Indicator {
-                kind: "TelemetryType".into(),
-                severity: "High",
-                description: format!("Reflection-adjacent type: '{ty}'"),
-            });
+    // ── 4. Token-set telemetry (Medium severity backstop) ────────────────
+    for t in TELEMETRY_TYPES {
+        if types_lower.iter().any(|s| s.contains(t)) {
+            let key = format!("TelemetryType:{t}");
+            if seen.insert(key) {
+                indicators.push(Indicator {
+                    kind: "TelemetryType".into(),
+                    severity: "Medium",
+                    description: format!("Reflection-adjacent type recovered: '{t}'"),
+                });
+            }
         }
     }
-
-    // ── Medium: telemetry strings (clr.dll, GetProcAddress, ...) ──
     for s in TELEMETRY_STRINGS {
-        if string_set.iter().any(|t| t.contains(s)) && seen.insert(format!("ts:{s}")) {
-            indicators.push(Indicator {
-                kind: "TelemetryString".into(),
-                severity: "Medium",
-                description: format!("Suspicious string reference: '{s}'"),
-            });
+        if string_set.iter().any(|t| t.contains(s)) {
+            let key = format!("TelemetryString:{s}");
+            if seen.insert(key) {
+                indicators.push(Indicator {
+                    kind: "TelemetryString".into(),
+                    severity: "Medium",
+                    description: format!("Suspicious string reference: '{s}'"),
+                });
+            }
         }
     }
-
-    // ── Medium: telemetry functions (Invoke, Add-Type, Frombase64string, ...) ──
     for f in TELEMETRY_FUNCTIONS {
-        if commands_and_methods.iter().any(|s| s.contains(f))
-            && seen.insert(format!("tf:{f}"))
-        {
-            indicators.push(Indicator {
-                kind: "TelemetryFunction".into(),
-                severity: "Medium",
-                description: format!("Suspicious function: '{f}'"),
-            });
+        if methods_lower.iter().any(|s| s.contains(f)) {
+            let key = format!("TelemetryFunction:{f}");
+            if seen.insert(key) {
+                indicators.push(Indicator {
+                    kind: "TelemetryFunction".into(),
+                    severity: "Medium",
+                    description: format!("Suspicious function: '{f}'"),
+                });
+            }
         }
     }
 
-    // ── Medium: PSv2 downgrade (powershell -Version 2) ──
-    if ps_v2 {
+    // ── 5. Combination indicators (Critical) ─────────────────────────────
+    if contains_any("writeallbytes") && contains_any("amsi.dll")
+        && seen.insert("combo:writeallbytes+amsi.dll".into())
+    {
         indicators.push(Indicator {
-            kind: "PsV2Downgrade".into(),
-            severity: "High",
-            description: "powershell.exe invoked with -Version 2 (CLM bypass)".into(),
+            kind: "AmsiDllHijack".into(),
+            severity: "Critical",
+            description: "WriteAllBytes with amsi.dll path -- writing fake AMSI DLL to disk (DLL hijack bypass)".into(),
         });
     }
+    if contains_any("amsi.dll") && contains_any("amsiopensession")
+        && seen.insert("combo:amsi.dll+amsiopensession".into())
+    {
+        indicators.push(Indicator {
+            kind: "MemoryPatch".into(),
+            severity: "Critical",
+            description: "amsi.dll + AmsiOpenSession -- patching session function to bypass scanning".into(),
+        });
+    }
+    if contains_any("amsi.dll") && contains_any("virtualprotect")
+        && seen.insert("combo:amsi.dll+virtualprotect".into())
+    {
+        indicators.push(Indicator {
+            kind: "MemoryPatch".into(),
+            severity: "Critical",
+            description: "amsi.dll + VirtualProtect -- memory patching AMSI function in loaded DLL".into(),
+        });
+    }
+    if contains_any("cachedgrouppolicysettings") && contains_any("scriptblocklogging")
+        && seen.insert("combo:cachedgps+sbl".into())
+    {
+        indicators.push(Indicator {
+            kind: "LoggingBypass".into(),
+            severity: "Critical",
+            description: "cachedGroupPolicySettings + ScriptBlockLogging -- script block logging explicitly disabled".into(),
+        });
+    }
+    if contains_any("add-type") {
+        for api in MEMORY_PATCH_APIS {
+            if contains_any(api)
+                && seen.insert(format!("combo:add-type+{api}"))
+            {
+                indicators.push(Indicator {
+                    kind: "AddTypeInjection".into(),
+                    severity: "Critical",
+                    description: format!(
+                        "Add-Type C# injection with {api} -- inline C# used to patch AMSI"
+                    ),
+                });
+            }
+        }
+        if contains_any("amsi.dll")
+            && seen.insert("combo:add-type+amsi.dll".into())
+        {
+            indicators.push(Indicator {
+                kind: "AddTypeInjection".into(),
+                severity: "Critical",
+                description: "Add-Type combined with amsi.dll reference -- C# loading/patching AMSI".into(),
+            });
+        }
+    }
 
+    // ── 6. PSv2 downgrade ────────────────────────────────────────────────
+    if psv2_via_tokens
+        || raw_lower.contains("-version 2")
+        || raw_lower.contains("-version  2")
+    {
+        if seen.insert("PSv2Downgrade".into()) {
+            indicators.push(Indicator {
+                kind: "PSv2Downgrade".into(),
+                severity: "Critical",
+                description: "PowerShell v2 downgrade -- PS v2 has no AMSI support".into(),
+            });
+        }
+    }
+
+    // ── 7. Score + status ────────────────────────────────────────────────
     let (status, confidence) = score(&indicators);
-    let is_amsi_bypass = status == "AMSI BYPASS";
+    let kinds: HashSet<&str> = indicators.iter().map(|i| i.kind.as_str()).collect();
+    let has_critical = indicators.iter().any(|i| i.severity == "Critical");
+    let has_amsi_specific = AMSI_SPECIFIC_KINDS.iter().any(|k| kinds.contains(k));
+    let is_amsi_bypass = has_critical || (confidence >= 60 && has_amsi_specific);
 
     ScanResult {
         file: file.into(),
@@ -204,7 +308,7 @@ fn detect_psv2(tokens: &[Token]) -> bool {
         {
             let args = cmd.args();
             for (i, a) in args.iter().enumerate() {
-                if a.eq_ignore_ascii_case("-version")
+                if (a.eq_ignore_ascii_case("-version") || a.eq_ignore_ascii_case("-v"))
                     && args.get(i + 1).map(|v| v.trim()) == Some("2")
                 {
                     return true;
@@ -215,31 +319,52 @@ fn detect_psv2(tokens: &[Token]) -> bool {
     false
 }
 
+/// Score model ported from `AmsiBypassReport.RecalculateScore`:
+///   - Critical: 40, High: 20, Medium: 10, Low: 5
+///   - Combo bonuses on type co-occurrence
+///   - 0.6x penalty if no AMSI-specific kind and base > 30
+///   - Clamp to [0, 100]
+///   - Status: AMSI BYPASS if any Critical OR (>=60 and AMSI-specific kind)
 fn score(indicators: &[Indicator]) -> (&'static str, u32) {
-    let mut score: u32 = 0;
-    let mut has_critical = false;
-    for ind in indicators {
-        let inc = match ind.severity {
-            "Critical" => {
-                has_critical = true;
-                30
-            },
-            "High" => 15,
-            "Medium" => 5,
-            _ => 2,
-        };
-        score = score.saturating_add(inc);
-    }
-    score = score.min(100);
+    let mut base: i32 = indicators
+        .iter()
+        .map(|i| match i.severity {
+            "Critical" => 40,
+            "High" => 20,
+            "Medium" => 10,
+            _ => 5,
+        })
+        .sum();
 
-    let status = if has_critical {
-        score = score.max(70);
+    let kinds: HashSet<&str> = indicators.iter().map(|i| i.kind.as_str()).collect();
+
+    if kinds.contains("ReflectionBypass") && kinds.contains("MemoryPatch") {
+        base += 20;
+    }
+    if kinds.contains("MemoryPatch") && kinds.contains("AmsiDll") {
+        base += 15;
+    }
+    if kinds.contains("LoggingBypass") && kinds.contains("ReflectionBypass") {
+        base += 15;
+    }
+    if kinds.contains("ScriptBlockSmuggling") && kinds.contains("ReflectionBypass") {
+        base += 20;
+    }
+
+    let has_amsi_specific = AMSI_SPECIFIC_KINDS.iter().any(|k| kinds.contains(k));
+    if !has_amsi_specific && base > 30 {
+        base = (base as f64 * 0.6) as i32;
+    }
+
+    let confidence = base.clamp(0, 100) as u32;
+
+    let has_critical = indicators.iter().any(|i| i.severity == "Critical");
+    let status = if has_critical || (confidence >= 60 && has_amsi_specific) {
         "AMSI BYPASS"
     } else if !indicators.is_empty() {
         "Suspicious"
     } else {
         "Clean"
     };
-
-    (status, score)
+    (status, confidence)
 }

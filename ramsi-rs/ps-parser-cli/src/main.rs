@@ -16,8 +16,9 @@
 //! - `--features`: currently a no-op (kept for CLI parity with PsParser.exe;
 //!   prints a notice to stderr and exits 0).
 
+mod deob;
 mod detector;
-mod keywords;
+mod patterns;
 
 use std::fs;
 use std::path::{Path, PathBuf};
