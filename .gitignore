@@ -33,9 +33,16 @@ ramsi-com.log
 # Exclude cloned 3rd-party repos with their own .git history
 samples/malicious/nishang/
 samples/malicious/PowerSploit/
-samples/amsi-bypass/AmsiScanBufferBypass/
+samples/amsi-bypass/
 samples/obfuscation-tools/Invoke-Obfuscation/
 samples/benign/
+
+# Obfuscated_Malicious_Powershell: only the demo three (26, 27, 28) are committed.
+# Other samples in there come from various 3rd-party repos with their own licenses.
+samples/Obfuscated_Malicious_Powershell/*
+!samples/Obfuscated_Malicious_Powershell/26_amsi_provider_disruption.ps1
+!samples/Obfuscated_Malicious_Powershell/27_amsi_provider_disruption_evasive.ps1
+!samples/Obfuscated_Malicious_Powershell/28_etw_bypass.ps1
 
 # ── Local-only working notes ───────────────────────────────────────────────
 progress.md
